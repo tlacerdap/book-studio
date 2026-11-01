@@ -1,87 +1,53 @@
 # book-studio
 
-Reads a book folder and renders it: a print-ready A4 PDF, typographic and ink checks on that PDF, and
-(next) the reading view of the Mac app. It holds all the code, fonts and CSS; the book repo holds only
-the writing.
+Book Studio reads a book folder and renders it: a print-ready A4 PDF, typographic and ink checks on that PDF, and
+a desktop app (macOS, Windows, Linux) for reading, annotating and printing. It holds all the code, fonts and
+CSS; the book repo holds only the writing. It is fully offline and needs no Python.
 
-Pipeline: markdown-it-py (markdown to HTML), Jinja2 templates, WeasyPrint (layout and PDF). No browser.
-
-## TypeScript engine (in progress: Python stays until the output is approved)
-
-A second engine is being built to replace the Python one so the desktop app needs no Python and no native libraries.
-It lives in `core/` (shared by the command line and, later, the app) and uses Electron as its layout engine:
-markdown-it for HTML, Paged.js for pagination, Chromium's `printToPDF` for the PDF, and pdf.js for the checker.
-It reads the same `book.yaml` and the same `styles/book.css` (plus `styles/paged.css`, which only the TypeScript engine loads).
-
-```
-core/       config, markdown (mdrender), notes, book, html, check, lint, pdf (spawns Electron)
-            browser/  pagination rules that run inside the hidden window (Paged.js handler)
-electron/   the hidden-window PDF process
-bin/        the `book-studio` command (Node)
-tests/      vitest
-```
-
-Setup needs Node 22.12 or newer:
-
-```bash
-npm install            # Electron is downloaded here
-npm run build          # bundles dist/
-npm test               # 100 tests
-node bin/book-studio.js pdf   /path/to/book --check
-node bin/book-studio.js check /path/to/book
-node bin/book-studio.js lint  /path/to/book
-```
-
-Options match the Python command (`--chapters`, `--out`, `--html`, `--extra-css`, `--check`, `--samples`). Developer aids:
-`--trace` (log pagination decisions), `--no-rules` (Paged.js without the book's pagination rules).
-
-Differences from the Python engine that you can see in the PDF:
-
-- Contents page numbers are printed from labels computed by the driver, then verified by the checker against the PDF
-  bookmarks and the page footers (Paged.js's own page counters were not reliable). Every entry is verified.
-- Bookmarks list chapters and their H2/H3 headings; Chromium cannot make a separate bookmark for a Part.
-- External link addresses are real text (so they can wrap at slashes) rather than CSS generated content.
+Pipeline: markdown-it (markdown to HTML), Paged.js (pagination), Chromium's `printToPDF` through Electron (PDF),
+pdf.js (checker).
 
 ## Layout
 
 ```
-bookcore/   shared rendering, used by the command line and the app
-            config (book.yaml), style, mdrender (markdown), book (chapters, Parts, HTML),
-            pdf (WeasyPrint), check (the checker), workflow (build, then check), lint
-            templates/ cover, contents and chapter HTML
-cli/        `book-studio pdf | check | lint`
-app/        the Mac app (not built yet)
-styles/     book.css and fonts/: the typography shared by the app view and the PDF
-extras/     lint_chapters.py: the Field Guide's own chapter lint, kept as it was (book-specific rules)
+core/       shared by the command line and the app
+            config (book.yaml), mdrender (markdown), book (chapters, Parts), html, notes, check, lint,
+            pdf (spawns Electron); browser/ holds the pagination rules that run inside the hidden window
+electron/   the hidden-window PDF process (and, from stage 2, the app)
+app/        the desktop app
+bin/        the `book-studio` command
+scripts/    build script
+styles/     book.css, paged.css and fonts/: the typography shared by the app view and the PDF
+tests/      vitest
 ```
 
 A **book** is any folder that contains a `book.yaml`. Nothing in this repo is specific to one book.
 
 ## Setup
 
-```bash
-cd book-studio
-uv sync
-brew install pango        # one-time; WeasyPrint needs it. The command line finds Homebrew's libraries itself.
-```
+Node 22.12 or newer.
 
-On Debian or Ubuntu: `apt install libpango-1.0-0 libpangoft2-1.0-0`.
+```bash
+npm install            # downloads Electron
+npm run build          # bundles dist/
+npm test
+```
 
 ## Command line
 
-Run from this folder, or from anywhere with `uv run --project /path/to/book-studio book-studio ...`.
-
 ```bash
-uv run book-studio pdf   /path/to/book                    # build/<output>.pdf in the book folder
-uv run book-studio pdf   /path/to/book --chapters 0-3     # quick preview: numbers, ranges, commas or file names
-uv run book-studio pdf   /path/to/book --check            # build, then run the checker (exit 1 on failures)
-uv run book-studio pdf   /path/to/book --out /tmp/x.pdf --html /tmp/x.html --extra-css try.css
-uv run book-studio check /path/to/book                    # checks build/<output>.pdf
-uv run book-studio check /path/to/book --samples /tmp/pages   # also write PNGs of sample pages
-uv run book-studio lint  /path/to/book                    # the Field Guide's own chapter lint
+npx book-studio pdf   /path/to/book                    # build/<output>.pdf in the book folder
+npx book-studio pdf   /path/to/book --chapters 0-3     # quick preview: numbers, ranges, commas or file names
+npx book-studio pdf   /path/to/book --check            # build, then run the checker (exit 1 on failures)
+npx book-studio pdf   /path/to/book --out /tmp/x.pdf --html /tmp/x.html --extra-css try.css
+npx book-studio check /path/to/book                    # checks build/<output>.pdf
+npx book-studio check /path/to/book --samples /tmp/pages   # also write PNGs of sample pages
+npx book-studio lint  /path/to/book                    # the Field Guide's own chapter lint
 ```
 
-Exit status is 0 on success and 1 if a check fails, so Claude Code can build and check without the app.
+Run it from this folder, or by path (`node /path/to/book-studio/bin/book-studio.js ...`). Exit status is 0 on success
+and 1 if a check fails, so Claude Code can build and check without the app. Developer aids: `--trace` logs pagination
+decisions and `--no-rules` runs Paged.js without the book's pagination rules.
 
 ## book.yaml
 
@@ -128,11 +94,9 @@ without repeating the fonts. Relative `url(...)` values in it resolve against `s
 
 It also reports the measure (characters per line), pages that end mostly empty, and the darkest pages.
 The PDF has no structure, so lines are classified from the fonts the stylesheet assigns (see the docstring
-in `bookcore/check.py`). Known limit: two code blocks that meet exactly at a page break can be read as one
-block split in two.
+in `core/check.ts`). A split code frame is told apart from two blocks that meet at a page break by the frame borders drawn on each page.
 
-For the app: `bookcore.workflow.print_book(book)` builds and checks and returns the PDF path, the page count and a
-`CheckReport` whose `results` and `problem_lines` are ready to show in a panel.
+It also checks that every paragraph, list item and code line of the source is in the printed text, and that every contents entry matches the PDF bookmarks and footers.
 
 ## Tuning the look
 
@@ -164,22 +128,22 @@ The measure is set by body size, font and `--margin-side` together. The checker 
 median. If you change one, expect to change another to stay near 65 to 75 characters. If you change a
 vertical-rhythm value, `book-studio check` does not verify it; compare baselines as described in "Checking the rhythm".
 
-Constants in `bookcore/mdrender.py`: `SHORT_CODE_LINES` (code blocks up to this many visible lines never split,
+Constants in `core/mdrender.ts`: `SHORT_CODE_LINES` (code blocks up to this many visible lines never split,
 default 15), `MIN_CODE_VISIBLE` (a split keeps this many visible lines on each side, default 4; the exact
 `orphans`/`widows` for each block are computed from its content, so blank lines do not count), `CODE_COLUMNS`
 (about how many characters fit across a code frame, used to estimate wrapped lines; 77 at 10.5pt in a 178mm
 frame) and `SHORT_PARAGRAPH_CHARS` (a paragraph shorter than this directly after a heading is kept with
 the block that follows it).
 
-Code highlighting uses Pygments token classes only. The monochrome treatment (bold keywords, grey
-italic comments, dark-grey strings) is the `pre .k`, `pre .s`, `pre .c` rules in `styles/book.css`.
+Code highlighting uses highlight.js token classes only. The monochrome treatment (bold keywords, grey
+italic comments, dark-grey strings) is the `pre .hljs-*` rules in `styles/paged.css`.
 
 ## Adding or swapping fonts
 
 1. Put the `.ttf` files and the licence file (`OFL.txt` or equivalent) in `styles/fonts/<family>/`.
-   Open licences only, so the build stays reproducible and redistributable. WeasyPrint is most
-   reliable with static instances: if a font ships only as a variable file, instantiate the weights
-   you need with `fonttools` (`fontTools.varLib.instancer`) and vendor those.
+   Open licences only, so the build stays reproducible and redistributable. Prefer static
+   instances: if a font ships only as a variable file, instantiate the weights you need with `fonttools`
+   and vendor those. Give each weight its own PostScript name, so the checker can tell weights apart.
 2. Add one `@font-face` per weight and style at the top of `styles/book.css`, pointing at the files.
 3. Point the matching `--font-*` variable at the new family name.
 4. Rebuild, then run `book-studio check`. The checker reads the heading and code font families, the margins
@@ -199,19 +163,19 @@ them so, vendor a CJK font and add it to `--font-mono` and `--font-body`.
 The spacing values were tuned against baseline-to-baseline distances measured from the reference:
 18pt inside paragraphs and list items, 21pt between list items, 25.5pt from a paragraph to a list,
 43.9pt from a block to an H2, 30pt from an H2 to its first line, 28.5pt inside the H1, 48pt from the H1
-to the byline, 42pt from the byline to the first H2. To re-measure after a change, read the `origin`
-(baseline) of each line with PyMuPDF (`page.get_text("dict")`) and take differences between consecutive
+to the byline, 42pt from the byline to the first H2. To re-measure after a change, read the baseline
+of each line from the PDF (pdf.js text items, or PyMuPDF `page.get_text("dict")`) and take differences between consecutive
 lines of the kinds above.
 
-## WeasyPrint behaviours this setup works around
+## Pagination notes
 
-- `counter-reset: page` breaks `target-counter(..., page)`, so front matter uses its own roman
-  counter and does not advance `page`; Chapter 0.1 is then arabic 1 and the contents numbers are real.
-- `:first` only matches the first page of the document, so "no header on chapter opening pages" uses
-  `string(running-title, first-except)`, which is empty on any page where the title is assigned.
-- Stylesheets passed to `render()` are user-level and lose to the document's own, so the stylesheets
-  (default, the book's own, and `--extra-css` files) are inlined into the HTML.
-- Footnotes (supported by the markdown parser) print as a list at the end of the chapter, not at
-  the foot of the page. No current chapter uses them.
+- Paged.js lays pages out in a hidden Chromium window; `core/browser/rules.ts` adds what it lacks: widows and orphans,
+  keep-with-next, short code blocks whole, code splits that keep four visible lines on each side, no page ending in
+  half a hyphenated word. `orphans`, `widows` and `break-inside` are renamed to `--pg-*` properties before Chromium
+  sees them, so Chromium's own fragmentation does not fight the rules.
+- Page numbers are printed from labels the driver computes (cover none, contents roman, first chapter arabic 1),
+  and the checker verifies each contents entry against the PDF bookmarks and the footers.
+- Bookmarks come from headings: chapters, H2 and H3. Chromium cannot make a bookmark for a Part.
 - Typographic quotes and ellipses are applied to text only. markdown-it's `replacements` rule is off
   on purpose: it would turn `--` and `---` into en and em dashes, and the book uses plain hyphens.
+- Footnotes print as a list at the end of the chapter.

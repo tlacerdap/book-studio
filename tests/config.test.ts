@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -86,46 +85,5 @@ describe("book.yaml", () => {
     return import("../core/config.ts").then(({ chapterFiles }) => {
       expect(chapterFiles(loadBook(dir)).map((f) => path.basename(f))).toEqual(["01-a.md", "02-a.md", "10-b.md"]);
     });
-  });
-});
-
-describe("book.yaml: the TypeScript and Python loaders agree", () => {
-  const py = spawnSync("uv", ["--version"], { encoding: "utf8" });
-  const available = py.status === 0 && fs.existsSync(path.resolve("bookcore/config.py"));
-
-  it.skipIf(!available)("accepts and rejects the same files, with the same values and messages", () => {
-    const dirs: Record<string, string> = {};
-    for (const [name, yaml] of Object.entries(CASES)) dirs[name] = bookWith(yaml);
-    const script = `
-import json, sys
-from bookcore import load_book, ConfigError
-out = {}
-for name, d in json.loads(sys.argv[1]).items():
-    try:
-        b = load_book(d)
-        out[name] = {"ok": True, "v": {k: getattr(b, k) for k in ["title","subtitle","author","date","language","chapters","output","index"]}}
-    except ConfigError as e:
-        out[name] = {"ok": False, "msg": str(e)}
-print(json.dumps(out))`;
-    const run = spawnSync("uv", ["run", "--project", path.resolve("."), "python", "-c", script, JSON.stringify(dirs)], { encoding: "utf8" });
-    expect(run.status, run.stderr).toBe(0);
-    const python = JSON.parse(run.stdout.trim().split("\n").pop()!) as Record<string, { ok: boolean; v?: Record<string, string | null>; msg?: string }>;
-    for (const [name, dir] of Object.entries(dirs)) {
-      let ts: { ok: true; v: Record<string, unknown> } | { ok: false; msg: string };
-      try {
-        const b = loadBook(dir);
-        ts = { ok: true, v: { title: b.title, subtitle: b.subtitle, author: b.author, date: b.date, language: b.language, chapters: b.chapters, output: b.output, index: b.index } };
-      } catch (e) {
-        ts = { ok: false, msg: (e as Error).message };
-      }
-      const p = python[name];
-      expect(ts.ok, `${name}: accepted by both or rejected by both`).toBe(p.ok);
-      if (ts.ok) expect(ts.v, name).toEqual(p.v);
-      else {
-        // The two YAML parsers word their syntax errors differently; every other message must match exactly.
-        const norm = (m: string) => m.replaceAll(dir, "<dir>").replace(/(is not valid YAML:)[\s\S]*/, "$1");
-        expect(norm(ts.msg), name).toBe(norm(p.msg!));
-      }
-    }
   });
 });
