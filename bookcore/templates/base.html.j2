@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="{{ book.language }}">
+<head>
+  <meta charset="utf-8">
+  <title>{{ book.title }}</title>
+  <meta name="author" content="{{ book.author }}">
+  <meta name="description" content="{{ book.subtitle }}">
+  <style>
+{{ css|safe }}
+  </style>
+</head>
+<body>
+{% include "cover.html.j2" %}
+{% include "toc.html.j2" %}
+{% for ch in chapters %}
+{% include "chapter.html.j2" %}
+{% endfor %}
+</body>
+</html>

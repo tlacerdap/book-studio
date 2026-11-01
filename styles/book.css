@@ -1,0 +1,429 @@
+/* ==========================================================================
+   AI Engineer Field Guide - print stylesheet (WeasyPrint, CSS Paged Media)
+
+   Everything you are likely to tune is a custom property in :root, in the order
+   it matters: fonts, type scale, vertical rhythm, lists, code, ink, page, breaks.
+   Type scale and rhythm follow measurements taken from the Claude Docs reference
+   (A4, 12pt body on an 18pt line). Printed in black and white: no backgrounds,
+   no fills, hairline rules.
+   ========================================================================== */
+
+/* ---- Fonts (vendored in tools/fonts/, SIL Open Font Licence) ---------------- */
+
+/* Headings: Newsreader, one weight (no bold headings). Static instance at optical size 24. */
+@font-face { font-family: "Newsreader"; font-weight: 400; font-style: normal; src: url("fonts/newsreader/Newsreader-Regular.ttf"); }
+@font-face { font-family: "Newsreader"; font-weight: 400; font-style: italic; src: url("fonts/newsreader/Newsreader-Italic.ttf"); }
+
+/* Body: Hanken Grotesk, Regular and Semibold (bold text is Semibold). */
+@font-face { font-family: "Hanken Grotesk"; font-weight: 400; font-style: normal; src: url("fonts/hanken-grotesk/HankenGrotesk-Regular.ttf"); }
+@font-face { font-family: "Hanken Grotesk"; font-weight: 400; font-style: italic; src: url("fonts/hanken-grotesk/HankenGrotesk-Italic.ttf"); }
+@font-face { font-family: "Hanken Grotesk"; font-weight: 600; font-style: normal; src: url("fonts/hanken-grotesk/HankenGrotesk-Semibold.ttf"); }
+@font-face { font-family: "Hanken Grotesk"; font-weight: 600; font-style: italic; src: url("fonts/hanken-grotesk/HankenGrotesk-SemiboldItalic.ttf"); }
+
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-style: normal; src: url("fonts/jetbrains-mono/JetBrainsMono-Regular.ttf"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-style: italic; src: url("fonts/jetbrains-mono/JetBrainsMono-Italic.ttf"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 700; font-style: normal; src: url("fonts/jetbrains-mono/JetBrainsMono-Bold.ttf"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 700; font-style: italic; src: url("fonts/jetbrains-mono/JetBrainsMono-BoldItalic.ttf"); }
+
+/* ---- Design tokens ---------------------------------------------------------- */
+
+:root {
+  /* Fonts. Swap a family here and every use follows. */
+  --font-body: "Hanken Grotesk", sans-serif;
+  --font-heading: "Newsreader", Georgia, serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --font-ui: var(--font-body);             /* running header, footer, labels, captions */
+
+  /* Type scale (reference: body 12/18, H1 24/28.5, H2 16.5, byline 9.75, H3 13.5 semibold) */
+  --size-body: 12pt;
+  --leading-body: 1.5;                     /* 18pt */
+  --size-h1: 24pt;                         /* chapter title */
+  --leading-h1: 28.5pt;
+  --size-h2: 16.5pt;
+  --leading-h2: 22pt;
+  --size-h3: 13.5pt;                       /* body sans, Semibold */
+  --leading-h3: 18pt;
+  --size-meta: 9.75pt;                     /* chapter label and level/priority line */
+  --leading-meta: 14pt;
+  --size-small: 8.5pt;                     /* running header, footer, captions */
+  --size-code: 10.5pt;
+  --leading-code: 1.5;                     /* 15.75pt */
+  --size-inline-code: 0.85em;              /* 10.2pt in body text; block code is 10.5pt */
+  --weight-heading: 400;
+  --weight-strong: 600;
+
+  /* Vertical rhythm. Baseline-to-baseline targets from the reference:
+       paragraph or list line 18pt, list item to list item 21pt, paragraph to list 25.5pt,
+       block to H2 43.9pt, H2 to first line 30pt, H1 to byline 48pt, byline to first H2 42pt. */
+  --space-paragraph: 7.5pt;                /* gap between blocks (18 + 7.5 = 25.5) */
+  --space-list-item: 3pt;                  /* 18 + 3 = 21 */
+  --space-h2-before: 24.2pt;
+  --space-h2-after: 9.7pt;
+  --space-h3-before: 14.5pt;
+  --space-h3-after: 6.5pt;
+  --space-code-before: 6pt;
+  --space-code-after: 10.5pt;
+  --opener-top: 30mm;                      /* space above the first line of a chapter opening page */
+  --opener-label-after: 12.5pt;            /* chapter label to chapter title */
+  --opener-title-after: 29pt;              /* chapter title to level/priority line (48pt baseline to baseline) */
+  --opener-meta-after: 23.5pt;             /* level/priority line to first H2 (42pt baseline to baseline) */
+
+  /* Lists: filled round bullet 3.75pt, 3.8pt in from the text edge, text indented 16.8pt. */
+  --list-indent: 16.8pt;
+  --bullet-size: 3.75pt;
+  --bullet-left: 3.8pt;
+  --bullet-top: 8.35pt;                    /* centres the bullet on the x-height of an 18pt line */
+
+  /* Code */
+  --code-pad-y: 0.6em;
+  --code-pad-x: 0.9em;
+  --code-width: 178mm;                     /* code frames are this wide, reaching into the side margins */
+
+  /* Contents */
+  --toc-label-width: 27mm;
+  --toc-number-width: 22mm;                /* room kept free after a title for the leader and number */
+
+  /* Ink. Warm near-black text, grey only for secondary elements. */
+  --color-text: #1f1e1d;
+  --color-meta: #0b0b0b;
+  --color-secondary: #4d4d4d;              /* running header, footer, captions */
+  --color-code-comment: #5c5c5c;           /* "mid-grey" for comments; stays crisp in print */
+  --color-code-string: #2e2d2c;
+  --color-rule: #8c8c8c;                   /* hairline rules, table borders */
+  --color-code-border: #b3b3b3;            /* thin light-grey code frame */
+  --hairline: 0.4pt;
+
+  /* Page (reference text block: top 18mm, bottom 20mm; sides widened for a book measure) */
+  --margin-top: 18mm;
+  --margin-bottom: 20mm;
+  --margin-side: 35mm;
+
+  /* Break control */
+  --orphans: 3;
+  --widows: 3;
+  --code-orphans: 4;                       /* fallback only: build_pdf.py sets exact values per block, */
+  --code-widows: 4;                        /* counting blank lines so 4 visible lines stay on each side */
+}
+
+/* ---- Page setup: A4, single-sided, same margins on every page -------------- */
+
+@page {
+  size: A4;
+  margin: var(--margin-top) var(--margin-side) var(--margin-bottom);
+
+  /* Running header: current chapter title. Empty on pages where a chapter (or the
+     contents) opens, because the string is assigned on that page (first-except). */
+  @top-center {
+    content: string(running-title, first-except);
+    font-family: var(--font-ui);
+    font-size: var(--size-small);
+    letter-spacing: 0.02em;
+    color: var(--color-secondary);
+    vertical-align: bottom;
+    padding-bottom: 5mm;
+  }
+  @bottom-center {
+    content: counter(page);
+    font-family: var(--font-ui);
+    font-size: var(--size-small);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-secondary);
+    vertical-align: top;
+    padding-top: 6mm;
+  }
+}
+
+/* Page numbers. Front matter counts in its own roman counter (`fp`) and does not advance the
+   real `page` counter, so Chapter 0.1 is naturally arabic 1 and target-counter(page) in the
+   contents returns the printed number. (`counter-reset: page` would be simpler, but it breaks
+   target-counter(page) in WeasyPrint.) */
+@page cover {
+  counter-increment: page 0;
+  @top-center { content: none; }
+  @bottom-center { content: none; }
+}
+
+@page front {
+  counter-increment: page 0 fp;
+  @bottom-center { content: counter(fp, lower-roman); }
+}
+
+/* ---- Base ------------------------------------------------------------------- */
+
+html {
+  font-family: var(--font-body);
+  font-size: var(--size-body);
+  line-height: var(--leading-body);
+  color: var(--color-text);
+  text-align: left;
+  hyphens: auto;
+  hyphenate-limit-chars: 6 3 3;
+  font-variant-ligatures: common-ligatures;
+  font-kerning: normal;
+  orphans: var(--orphans);
+  widows: var(--widows);
+}
+
+body { margin: 0; }
+
+/* Space that would sit at the top of a page after a page break is dropped, so text starts
+   at the same height on every page. */
+h2, h3, h4, p, ul, ol, pre, blockquote, hr, figure, table { margin-break: discard; }
+
+p { margin: 0 0 var(--space-paragraph); }
+
+strong, b { font-weight: var(--weight-strong); }
+
+a { color: inherit; text-decoration: none; }
+/* Printed pages cannot be clicked: show where an external link goes. */
+a.ext::after { content: " (" attr(href) ")"; font-family: var(--font-mono); font-size: var(--size-inline-code); hyphens: none; overflow-wrap: anywhere; }
+
+.url { font-family: var(--font-mono); font-size: var(--size-inline-code); hyphens: none; overflow-wrap: anywhere; }
+
+/* ---- Headings --------------------------------------------------------------- */
+
+h1, h2, h3, h4 {
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  hyphens: manual;
+  margin: 0;
+  break-after: avoid;
+  break-inside: avoid;
+  orphans: 4;
+  widows: 4;
+}
+
+h2 {
+  font-size: var(--size-h2);
+  line-height: var(--leading-h2);
+  margin: var(--space-h2-before) 0 var(--space-h2-after);
+  bookmark-level: 3;
+  bookmark-label: content();
+}
+
+/* H3 is not in the reference: body sans at 13.5pt Semibold. */
+h3 {
+  font-family: var(--font-body);
+  font-weight: var(--weight-strong);
+  font-size: var(--size-h3);
+  line-height: var(--leading-h3);
+  margin: var(--space-h3-before) 0 var(--space-h3-after);
+  bookmark-level: 4;
+  bookmark-label: content();
+}
+
+h4 {
+  font-family: var(--font-body);
+  font-weight: var(--weight-strong);
+  font-size: var(--size-body);
+  margin: 12pt 0 3pt;
+}
+
+/* The first heading in a chapter body needs no air above. */
+.chapter-body > :first-child { margin-top: 0; }
+
+/* ---- Lists ------------------------------------------------------------------ */
+
+ul, ol { margin: 0 0 var(--space-paragraph); padding: 0; }
+ul { list-style: none; }
+ol { padding-left: var(--list-indent); }
+
+li { margin: 0 0 var(--space-list-item); break-inside: avoid; }
+ul > li { position: relative; padding-left: var(--list-indent); }
+ul > li::before {
+  content: "";
+  position: absolute;
+  left: var(--bullet-left);
+  top: var(--bullet-top);
+  width: var(--bullet-size);
+  height: var(--bullet-size);
+  border-radius: 50%;
+  background: var(--color-text);          /* the bullet itself is a solid dot */
+}
+li > p { margin-bottom: var(--space-list-item); }
+li > p:last-child { margin-bottom: 0; }
+li > ul, li > ol { margin: var(--space-list-item) 0 0; }
+
+/* Never strand the last item alone at the top of a page. */
+li:last-child { break-before: avoid; }
+li:only-child { break-before: auto; }
+
+/* A list straight after a heading keeps its first two items together, so the heading is never
+   left with fewer than three lines of what it introduces. */
+h2 + ul > li:first-child, h2 + ol > li:first-child,
+h3 + ul > li:first-child, h3 + ol > li:first-child { break-after: avoid; }
+
+/* The sentence that introduces a list or code block stays with it. */
+.lead-in { break-after: avoid; }
+
+/* ---- Code ------------------------------------------------------------------- */
+
+pre {
+  font-family: var(--font-mono);
+  font-size: var(--size-code);
+  line-height: var(--leading-code);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  hyphens: none;
+  tab-size: 4;
+  margin: var(--space-code-before) 0 var(--space-code-after);
+  padding: var(--code-pad-y) var(--code-pad-x);
+  border: var(--hairline) solid var(--color-code-border);
+  background: none;
+  color: var(--color-text);
+  orphans: var(--code-orphans);
+  widows: var(--code-widows);
+}
+
+pre code { font: inherit; font-variant-ligatures: none; background: none; border: 0; padding: 0; }
+pre.code-short { break-inside: avoid; }
+/* Code frames are wider than the text column: they reach into the side margins so 77-column
+   lines rarely wrap. The bleed is whatever makes the frame --code-width wide. */
+.chapter-body > pre {
+  margin-left: calc((210mm - 2 * var(--margin-side) - var(--code-width)) / 2);
+  margin-right: calc((210mm - 2 * var(--margin-side) - var(--code-width)) / 2);
+}
+
+code {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-size: var(--size-inline-code);
+  hyphens: none;
+  overflow-wrap: anywhere;
+}
+
+/* Monochrome syntax highlighting: weight, slant and one grey. Never colour. */
+pre .k, pre .kc, pre .kd, pre .kn, pre .kp, pre .kr, pre .kt, pre .ow { font-weight: 700; }
+pre .nd, pre .nt { font-weight: 700; }                                    /* decorators, tags */
+pre .s, pre .sa, pre .sb, pre .sc, pre .dl, pre .s2, pre .sh, pre .si,
+pre .sx, pre .sr, pre .s1, pre .ss, pre .se { color: var(--color-code-string); }
+pre .sd { color: var(--color-code-comment); font-style: italic; }         /* docstrings */
+pre .c, pre .ch, pre .cm, pre .c1, pre .cs, pre .cp, pre .cpf { color: var(--color-code-comment); font-style: italic; }
+pre .gh, pre .gu { font-weight: 700; }
+pre .err { color: inherit; border: 0; }
+
+/* ---- Quotes, rules, tables, images ------------------------------------------ */
+
+blockquote {
+  margin: var(--space-code-before) 0 var(--space-paragraph);
+  padding: 0 0 0 1.2em;
+  border-left: var(--hairline) solid var(--color-rule);
+  break-inside: avoid;
+}
+blockquote > :last-child { margin-bottom: 0; }
+
+hr { border: 0; border-top: var(--hairline) solid var(--color-rule); margin: 2em 0; }
+
+table { border-collapse: collapse; margin: 1em 0; break-inside: avoid; }
+th, td { border: var(--hairline) solid var(--color-rule); padding: 0.3em 0.6em; text-align: left; }
+th { font-weight: var(--weight-strong); }
+
+img, figure { max-width: 100%; break-inside: avoid; }
+figure { margin: 1.2em 0; }
+figcaption { font-size: var(--size-small); color: var(--color-secondary); margin-top: 0.4em; }
+
+sup { font-size: 0.72em; line-height: 0; vertical-align: super; }
+.footnote-backref { display: none; }                /* nothing to click in print */
+.footnotes-sep { border: 0; border-top: var(--hairline) solid var(--color-rule); width: 30%; margin: 2em 0 0.8em; }
+.footnotes { margin-top: 2em; font-size: var(--size-small); }
+.footnotes ol { padding-left: 1.4em; }
+
+/* ---- Cover ------------------------------------------------------------------ */
+
+.cover { page: cover; padding-top: 62mm; }
+.cover-title {
+  font-size: 44pt;
+  line-height: 1.1;
+  margin: 0;
+  string-set: running-title "";
+  break-after: auto;
+}
+.cover-subtitle {
+  font-family: var(--font-heading);
+  font-size: 19pt;
+  line-height: 1.3;
+  margin: 8mm 0 0;
+}
+.cover-rule { width: 22mm; border-top: 0.75pt solid var(--color-text); margin: 16mm 0 12mm; }
+.cover-author { font-family: var(--font-body); font-size: 13.5pt; font-weight: var(--weight-strong); line-height: 1.3; margin: 0; }
+.cover-date { font-family: var(--font-ui); font-size: var(--size-meta); color: var(--color-meta); margin: 2mm 0 0; }
+
+/* ---- Table of contents ------------------------------------------------------- */
+
+.toc { page: front; break-before: page; }
+.toc-title {
+  font-size: var(--size-h1);
+  line-height: var(--leading-h1);
+  string-set: running-title "Contents";
+  margin: 0 0 12mm;
+  padding-top: 8mm;
+  bookmark-level: 1;
+  bookmark-label: "Contents";
+}
+.toc-list { list-style: none; margin: 0; padding: 0; }
+.toc-list li { margin: 0; padding: 0; break-inside: avoid; break-after: auto; break-before: auto; }
+.toc-list a { display: block; hyphens: manual; }
+.toc-label { display: inline-block; width: var(--toc-label-width); vertical-align: top; }
+/* The title is its own block, narrower than the line, so a long title wraps inside it and the
+   dot leader and page number always have room after its last line. */
+.toc-text {
+  display: inline-block;
+  max-width: calc(100% - var(--toc-label-width) - var(--toc-number-width));
+}
+.toc-list .toc-part { margin-top: 1.1em; break-after: avoid; }
+.toc-part .toc-text { font-family: var(--font-heading); font-size: var(--size-h2); line-height: var(--leading-h2); }
+.toc-part .toc-label { vertical-align: baseline; font-family: var(--font-ui); font-size: var(--size-meta); font-weight: var(--weight-strong); letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-meta); }
+.toc-list .toc-chapter { margin-top: 3pt; }
+.toc-chapter .toc-label { font-weight: var(--weight-strong); }
+.toc-list a::after {
+  content: leader(". ") target-counter(attr(href), page);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-ui);
+  font-size: var(--size-body);
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* ---- Chapters ---------------------------------------------------------------- */
+
+.chapter { page: body; break-before: page; }
+
+.chapter-opener { padding-top: var(--opener-top); margin-bottom: var(--opener-meta-after); }
+
+.part-eyebrow {
+  margin: 0 0 20pt;
+  font-family: var(--font-ui);
+  font-size: var(--size-meta);
+  line-height: var(--leading-meta);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-meta);
+  bookmark-level: 1;
+  bookmark-label: content();
+}
+.part-label { font-weight: var(--weight-strong); margin-right: 1.2em; }
+
+.chapter-label {
+  margin: 0 0 var(--opener-label-after);
+  font-family: var(--font-ui);
+  font-size: var(--size-meta);
+  line-height: var(--leading-meta);
+  font-weight: var(--weight-strong);
+  color: var(--color-meta);
+}
+.chapter-title {
+  font-size: var(--size-h1);
+  line-height: var(--leading-h1);
+  string-set: running-title content();
+  bookmark-level: 2;
+  bookmark-label: content();
+}
+.chapter-meta {
+  margin: var(--opener-title-after) 0 0;
+  font-family: var(--font-ui);
+  font-size: var(--size-meta);
+  line-height: var(--leading-meta);
+  color: var(--color-meta);
+}
+.chapter-meta span + span { margin-left: 1.6em; }

@@ -1,0 +1,15 @@
+<article class="chapter{% if ch.id == chapters[0].id %} first-chapter{% endif %}" id="{{ ch.id }}">
+  <header class="chapter-opener">
+    {% if ch.part_opens %}
+    <p class="part-eyebrow" id="{{ ch.part_id }}"><span class="part-label">{{ ch.part_label }}</span> <span class="part-name">{{ ch.part_name }}</span></p>
+    {% endif %}
+    <p class="chapter-label">{{ ch.label }}</p>
+    <h1 class="chapter-title">{{ ch.title_html|safe }}</h1>
+    {% if ch.level %}
+    <p class="chapter-meta"><span>Level: {{ ch.level }}</span><span>Priority: {{ ch.priority }}</span></p>
+    {% endif %}
+  </header>
+  <div class="chapter-body">
+{{ ch.body_html|safe }}
+  </div>
+</article>

@@ -1,0 +1,11 @@
+<nav class="toc">
+  <h1 class="toc-title">Contents</h1>
+  <ol class="toc-list">
+  {% for ch in chapters %}
+    {% if ch.part_opens %}
+    <li class="toc-part"><a href="#{{ ch.part_id }}"><span class="toc-label">{{ ch.part_label }}</span> <span class="toc-text">{{ ch.part_name }}</span></a></li>
+    {% endif %}
+    <li class="toc-chapter"><a href="#{{ ch.id }}"><span class="toc-label">{{ ch.label }}</span> <span class="toc-text">{{ ch.title_html|safe }}</span></a></li>
+  {% endfor %}
+  </ol>
+</nav>

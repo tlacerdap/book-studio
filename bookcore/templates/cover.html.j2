@@ -1,0 +1,7 @@
+<section class="cover">
+  <h1 class="cover-title">{{ book.title }}</h1>
+  {% if book.subtitle %}<p class="cover-subtitle">{{ book.subtitle }}</p>{% endif %}
+  <div class="cover-rule"></div>
+  {% if book.author %}<p class="cover-author">{{ book.author }}</p>{% endif %}
+  {% if book.date %}<p class="cover-date">{{ book.date }}</p>{% endif %}
+</section>

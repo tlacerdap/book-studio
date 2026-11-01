@@ -1,0 +1,28 @@
+[project]
+name = "book-studio"
+version = "0.1.0"
+description = "Reads a book folder (book.yaml plus markdown chapters) and renders it: print-ready PDF, checks, and the Mac app's reading view"
+requires-python = ">=3.12"
+dependencies = [
+    "markdown-it-py==4.2.0",
+    "mdit-py-plugins==0.6.1",
+    "weasyprint==70.0",
+    "pygments==2.21.0",
+    "jinja2==3.1.6",
+    "pymupdf==2.0",
+    "numpy==2.5.4",
+    "pyyaml==6.0.3",
+]
+
+[project.scripts]
+book-studio = "cli.main:main"
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["bookcore", "cli"]
+
+[tool.setuptools.package-data]
+bookcore = ["templates/*.j2"]
