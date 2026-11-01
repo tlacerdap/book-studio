@@ -193,6 +193,13 @@ const isContinuation = (prev: Line, next: Line): boolean => {
 };
 const tip = (b: Block) => b.lines.map((l) => l.text).join(" ");
 
+/** True if the next page opens a chapter (or there is none): a last section that is short has nothing more to keep with it. */
+function endsChapter(pages: PageInfo[], p: PageInfo, S: StyleMetrics): boolean {
+  const next = pages[p.index + 1];
+  if (!next) return true;
+  return next.lines.slice(0, 8).some((l) => l.kind === "heading" && l.size >= S.h1Size - 2);
+}
+
 function checkHeadings(pages: PageInfo[], S: StyleMetrics, minAfter: number): string[] {
   const out: string[] = [];
   for (const p of bodyPages(pages)) {
@@ -201,7 +208,7 @@ function checkHeadings(pages: PageInfo[], S: StyleMetrics, minAfter: number): st
     const [hb, i] = heads[heads.length - 1];
     const after = p.blocks.slice(i + 1).filter((b) => b.kind !== "heading").reduce((n, b) => n + b.lines.length, 0);
     if (p.blocks[p.blocks.length - 1].kind === "heading") out.push(`page ${p.index + 1} (printed ${p.label || "-"}): ends with heading '${tip(p.blocks[p.blocks.length - 1])}'`);
-    else if (after < minAfter) out.push(`page ${p.index + 1} (printed ${p.label || "-"}): heading '${tip(hb)}' has only ${after} line(s) after it`);
+    else if (after < minAfter && !endsChapter(pages, p, S)) out.push(`page ${p.index + 1} (printed ${p.label || "-"}): heading '${tip(hb)}' has only ${after} line(s) after it`);
   }
   return out;
 }

@@ -23,6 +23,9 @@ protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: 
 // The reading view is laid out with the same Chromium settings the PDF is printed with, so a page breaks in the same place on both.
 applyPrintSwitches(app);
 app.setName("Book Studio");
+// An AppImage cannot carry the setuid helper Chromium's own sandbox needs on many Linux systems, and the app would not
+// start at all. The window stays sandboxed at the renderer level (see webPreferences); only this process-level layer is dropped.
+if (process.platform === "linux" && process.env.APPIMAGE) app.commandLine.appendSwitch("no-sandbox");
 
 let mainWindow: BrowserWindow | null = null;
 let book: BookConfig | null = null;

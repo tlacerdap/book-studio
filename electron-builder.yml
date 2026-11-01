@@ -1,0 +1,44 @@
+# Installers for Book Studio. Unsigned on purpose: see "First launch" in the README.
+appId: app.bookstudio.desktop
+productName: Book Studio
+copyright: Copyright (c) Tabaré Lacerda
+directories:
+  buildResources: assets
+  output: release
+artifactName: Book-Studio-${version}-${os}-${arch}.${ext}
+files:
+  - package.json
+  - dist/**
+  - styles/**
+  - "!dist/electron/**"
+  - "!dist/cli.mjs"
+asar: true
+asarUnpack:
+  - "node_modules/@napi-rs/**"
+npmRebuild: false
+mac:
+  category: public.app-category.productivity
+  identity: null          # no code signing
+  hardenedRuntime: false
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+dmg:
+  sign: false
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+linux:
+  category: Office
+  executableName: book-studio
+  maintainer: Tabaré Lacerda <lacerdatabare@gmail.com>
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]

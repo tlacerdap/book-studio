@@ -47,6 +47,44 @@ press Enter. An answer shows under its note; the check mark ("Mark read") remove
 preload bridge (`app/shared/api.ts` lists every call). It loads only its own files, the shared styles and the prepared
 pages; the network is blocked outright. Links in the book open in your own browser.
 
+## Installers
+
+| System | File | Built with |
+| --- | --- | --- |
+| macOS | `Book-Studio-<version>-mac-arm64.dmg` and `-mac-x64.dmg` | electron-builder |
+| Windows | `Book-Studio-<version>-win-x64.exe` (NSIS installer) | electron-builder |
+| Linux | `Book-Studio-<version>-linux-x86_64.AppImage` and `Book-Studio-<version>-linux-amd64.deb` | electron-builder |
+
+```bash
+npm run dist          # everything this machine can build, into release/
+npx electron-builder --mac --publish never      # or --win, or --linux
+npm run pack          # an unpacked app in release/mac-arm64/ (or similar), quick to test
+```
+
+`electron-builder.yml` holds the settings. A macOS build holds both Mac architectures, so it needs the native canvas
+module (used by the checker's ink and colour checks) for both: `npm install --no-save --force
+@napi-rs/canvas-darwin-x64@0.1.100 @napi-rs/canvas-darwin-arm64@0.1.100` before building on a Mac. The `.deb` needs a
+Linux machine (its packaging tool fails on macOS); the other installers build anywhere. The icon is `assets/icon.png`,
+drawn by `npm run icon`.
+
+**CI.** `.github/workflows/build.yml` builds on macOS, Windows and Linux for each push to `main`, each pull request and
+on demand (Actions > build > Run workflow). Every job uploads its installers as an artifact of the run, and the Linux job
+also runs the tests under `xvfb`. Nothing is published or released automatically.
+
+## First launch
+
+The installers are **not signed or notarized**, so each system warns once. The app itself is the same on all three.
+
+- **macOS:** open the `.dmg`, drag Book Studio to Applications. The first time, right-click (or Control-click) the app and
+  choose **Open**, then **Open** again in the dialog. If macOS says the app "is damaged", run
+  `xattr -dr com.apple.quarantine "/Applications/Book Studio.app"` once.
+- **Windows:** run the installer. If SmartScreen shows "Windows protected your PC", click **More info**, then **Run anyway**.
+- **Linux:** `chmod +x Book-Studio-*.AppImage && ./Book-Studio-*.AppImage`, or `sudo apt install ./Book-Studio-*.deb`.
+  The AppImage starts Chromium without its process sandbox (an AppImage cannot carry the helper it needs); the window
+  keeps its own sandbox, context isolation and content security policy. The `.deb` should use the normal sandbox (untested here).
+
+Nothing is sent anywhere; the app works without a network connection.
+
 ## Layout
 
 ```
@@ -71,6 +109,7 @@ Node 22.12 or newer.
 npm install            # downloads Electron
 npm run build          # bundles dist/
 npm test
+npm run app            # starts the desktop app
 ```
 
 ## Command line
