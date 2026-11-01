@@ -13,6 +13,7 @@ import { locateProblems, printBook } from "../../core/print.ts";
 import { buildReadingHtml } from "../../core/reading.ts";
 import { PACKAGE_ROOT, STYLES } from "../../core/paths.ts";
 import type { CheckReport } from "../../core/check.ts";
+import { PageCounter, type PageCounts } from "./pagecount.ts";
 import { applyPrintSwitches, renderPdf } from "../../electron/render-pdf.ts";
 import type { BookInfo, ChapterText, MenuCommand, OpenResult, PrintOutcome, UnsavedChoice } from "../shared/api.ts";
 
@@ -33,6 +34,7 @@ let allowClose = false;
 let quitting = false;
 let printing = false;
 let watcher: fs.FSWatcher | null = null;
+let counter: PageCounter | null = null;
 
 // ------------------------------------------------------------------------------------------------
 // What the window may load: its own files, the shared styles and scripts, the prepared reading pages. Nothing else.
@@ -147,6 +149,8 @@ function watch(b: BookConfig): void {
         const files = [...pending];
         pending = new Set();
         mainWindow?.webContents.send("book:changed", files);
+        // A change to the book's settings, index or styles can move every page; a chapter file moves only its own.
+        if (book) counter?.refresh(book, files.some((f) => !f.endsWith(".md") || /INDEX/i.test(f)));
       }, 250);
     });
     watcher.on("error", () => watcher?.close());
@@ -155,12 +159,20 @@ function watch(b: BookConfig): void {
   }
 }
 
+function registerReading(html: string): string {
+  const id = `r${++readingCounter}`;
+  readingPages.set(id, html);
+  for (const old of [...readingPages.keys()].slice(0, -12)) readingPages.delete(old);
+  return `${SCHEME}://reading/${id}.html`;
+}
+
 function openBook(folder: string): OpenResult {
   try {
     const b = loadBook(folder);
     book = b;
     watch(b);
     remember(b);
+    counter?.refresh(b);
     mainWindow?.setTitle(`${b.title} - Book Studio`);
     return { ok: true, book: bookInfo(b) };
   } catch (e) {
@@ -279,15 +291,16 @@ function registerIpc(): void {
     const b = requireBook();
     const f = chapterPath(String(file));
     const html = buildReadingHtml(b, f, String(text), { assetBase: `${SCHEME}://assets/` });
-    const id = `r${++readingCounter}`;
-    readingPages.set(id, html);
-    for (const old of [...readingPages.keys()].slice(0, -6)) readingPages.delete(old);
-    return { url: `${SCHEME}://reading/${id}.html` };
+    return { url: registerReading(html) };
   });
   handle("external:open", async (url: string) => {
     if (/^https?:\/\//i.test(String(url))) await shell.openExternal(String(url));
   });
   handle("clipboard:write", (text: string) => clipboard.writeText(String(text).slice(0, 2000)));
+  handle("pages:get", (): PageCounts => counter?.state() ?? { counts: {}, pending: 0, chapters: 0 });
+  handle("pages:known", (file: string, pages: number) => {
+    if (book && Number.isInteger(pages) && pages > 0 && pages < 5000) counter?.known(chapterPath(String(file)), pages);
+  });
   handle("print:run", () => print());
   handle("pdf:open", async (p: string) => {
     const b = requireBook();
@@ -417,6 +430,7 @@ function createWindow(): void {
     win.webContents.send("window:query-close");
   });
   win.on("closed", () => {
+    counter?.stop();
     mainWindow = null;
     watcher?.close();
     if (quitting) app.quit();
@@ -431,6 +445,12 @@ app.whenReady().then(() => {
   ses.webRequest.onBeforeRequest((details, cb) => cb({ cancel: !/^(bookstudio|devtools|data|blob):/.test(details.url) }));
   ses.setPermissionRequestHandler((_wc, _permission, cb) => cb(false));
   ses.setPermissionCheckHandler(() => false);
+  counter = new PageCounter(
+    path.join(app.getPath("userData"), "page-counts.json"),
+    `${SCHEME}://assets/`,
+    registerReading,
+    (state) => mainWindow?.webContents.send("pages:update", state),
+  );
   registerIpc();
   buildMenu();
   createWindow();

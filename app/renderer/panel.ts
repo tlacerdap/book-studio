@@ -1,7 +1,7 @@
 // The left panel: the book's Parts and chapters, with the outline of the chapter that is open and a badge for open notes.
 
 import type { ChapterSummary } from "../../core/book.ts";
-import type { BookInfo } from "../shared/api.ts";
+import type { BookInfo, PageCounts } from "../shared/api.ts";
 import { clear, h } from "./dom.ts";
 
 export interface PanelHooks {
@@ -24,11 +24,26 @@ export class Panel {
     private hooks: PanelHooks,
   ) {}
 
-  render(book: BookInfo | null, currentFile: string | null, outline: OutlineItem[], openNotes: number | null): void {
+  /** "660 pages" for the whole book, or how far the counting has got. */
+  private length(pages: PageCounts | null, chapters: number): HTMLElement | null {
+    if (!pages || !chapters) return null;
+    const counted = Object.keys(pages.counts).length;
+    const total = Object.values(pages.counts).reduce((a, b) => a + b, 0);
+    const done = pages.pending === 0 && counted >= chapters;
+    return h(
+      "div",
+      { class: "length", title: "Numbered pages, from the first chapter to the end. The PDF also has a cover and the contents." },
+      h("b", {}, done ? `${total} pages` : `${total}+ pages`),
+      h("span", {}, done ? ` in ${chapters} chapters` : ` so far, counting ${counted} of ${chapters}...`),
+    );
+  }
+
+  render(book: BookInfo | null, currentFile: string | null, outline: OutlineItem[], openNotes: number | null, pages: PageCounts | null = null): void {
     clear(this.root);
     if (!book) return;
     this.root.append(
       h("button", { class: "panel-book", type: "button", title: "Open another book", onClick: () => this.hooks.onOpenBook() }, h("span", { class: "t" }, book.title), book.author ? h("span", { class: "a" }, book.author) : null),
+      ...[this.length(pages, book.chapters.length)].filter((x): x is HTMLElement => !!x),
     );
     // Consecutive chapters of one Part are grouped under its name; chapters outside every Part stand alone.
     const groups: { key: string; head: string; chapters: ChapterSummary[] }[] = [];
@@ -69,6 +84,7 @@ export class Panel {
             { class: `chapter${current ? " current" : ""}`, type: "button", "data-file": c.file, title: c.file, onClick: () => this.hooks.onOpenChapter(c.path) },
             h("span", { class: "num" }, c.label ? c.label.replace(/^Chapter /, "") : ""),
             h("span", { class: "name" }, c.title),
+            pages?.counts[c.path] ? h("span", { class: "pp", title: `${pages.counts[c.path]} pages` }, String(pages.counts[c.path])) : null,
             count > 0 ? h("span", { class: "badge", title: `${count} open note${count === 1 ? "" : "s"}` }, String(count)) : null,
           ),
         );

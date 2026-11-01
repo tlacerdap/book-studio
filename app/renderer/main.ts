@@ -4,7 +4,7 @@
 import { chapterId } from "../../core/ids.ts";
 import { openNotes, parseNotes } from "../../core/notes.ts";
 import { outline } from "../../core/notemap.ts";
-import type { BookInfo, MenuCommand, OpenResult } from "../shared/api.ts";
+import type { BookInfo, MenuCommand, OpenResult, PageCounts } from "../shared/api.ts";
 import { clear, h } from "./dom.ts";
 import { Panel } from "./panel.ts";
 import { ReadingView } from "./reading.ts";
@@ -29,6 +29,7 @@ let book: BookInfo | null = null;
 let doc: Doc | null = null;
 let view: "reading" | "source" = "reading";
 let busy = false;
+let pageCounts: PageCounts | null = null;
 
 const panelEl = $("panel");
 const reportEl = $("report");
@@ -51,6 +52,12 @@ const reading = new ReadingView(viewEls.reading, api, {
   onError: (m) => toast(`Could not lay out this chapter: ${m}`),
   onToast: (m) => toast(m),
   onZoom: () => renderToolbar(),
+  onPages: (n) => {
+    if (doc && pageCounts) pageCounts.counts[doc.file] = n;
+    if (doc) void api.pagesKnown(doc.file, n);
+    renderPanel();
+    renderToolbar();
+  },
   onCopy: (text) => void api.copyText(text).then(() => toast(`Copied. Paste it to Claude Code: ${text}`)),
 });
 
@@ -114,7 +121,7 @@ function openCount(): number | null {
 }
 
 function renderPanel(): void {
-  panel.render(book, doc?.file ?? null, doc ? outline(doc.text) : [], openCount());
+  panel.render(book, doc?.file ?? null, doc ? outline(doc.text) : [], openCount(), pageCounts);
 }
 
 function renderToolbar(): void {
@@ -123,7 +130,13 @@ function renderToolbar(): void {
   const summary = currentSummary();
   bar.append(
     h("button", { class: "icon-btn", type: "button", title: `Show or hide chapters (${mod}+\\)`, "aria-label": "Show or hide chapters", onClick: () => togglePanel() }, "☰"),
-    h("div", { class: "tb-title" }, summary ? `${summary.label ? summary.label + ": " : ""}${summary.title}` : book ? book.title : "Book Studio", dirty() ? h("span", { class: "dirty" }, "unsaved") : null),
+    h(
+      "div",
+      { class: "tb-title" },
+      summary ? `${summary.label ? summary.label + ": " : ""}${summary.title}` : book ? book.title : "Book Studio",
+      doc && pageCounts?.counts[doc.file] ? h("span", { class: "pages" }, `${pageCounts.counts[doc.file]} pages`) : null,
+      dirty() ? h("span", { class: "dirty" }, "unsaved") : null,
+    ),
   );
   if (doc) {
     const seg = h("div", { class: "seg", role: "group", "aria-label": "View" });
@@ -505,6 +518,11 @@ async function printPdf(): Promise<void> {
 }
 
 api.onPrintProgress((p) => report.progress(p.stage));
+api.onPageCounts((p) => {
+  pageCounts = p;
+  renderPanel();
+  renderToolbar();
+});
 
 // ------------------------------------------------------------------------------------------------
 // Menu commands and window events
@@ -576,6 +594,7 @@ api.onQueryClose(async () => {
 
 async function start(): Promise<void> {
   renderToolbar();
+  pageCounts = await api.pageCounts();
   const current = await api.currentBook();
   if (current) return handleOpen({ ok: true, book: current });
   const recent = await api.recentBooks();

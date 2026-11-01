@@ -17,6 +17,8 @@ export interface ReadingHooks {
   onError(message: string): void;
   onToast(message: string): void;
   onZoom(zoom: number, fit: boolean): void;
+  /** How many pages the chapter has, now that it is laid out. */
+  onPages(pages: number): void;
   /** Put text on the clipboard. */
   onCopy(text: string): void;
 }
@@ -214,6 +216,7 @@ export class ReadingView {
         this.frame.style.height = `${this.docHeight}px`;
         this.ready = true;
         this.loading.hidden = true;
+        this.hooks.onPages(Number(m.pages));
         this.layout();
         if (this.pendingScroll !== null) this.scroller.scrollTop = this.pendingScroll;
         this.pendingScroll = null;

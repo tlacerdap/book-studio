@@ -23,6 +23,12 @@ export interface ChapterText {
   mtimeMs: number;
 }
 
+export interface PageCounts {
+  counts: Record<string, number>;
+  pending: number;
+  chapters: number;
+}
+
 export type PrintProgress = { stage: "preparing" | "laying-out" | "checking" | "done" };
 
 export interface PrintOutcome {
@@ -66,6 +72,8 @@ export interface StudioApi {
   prepareReading(file: string, text: string): Promise<{ url: string }>;
   openExternal(url: string): Promise<void>;
   copyText(text: string): Promise<void>;
+  pageCounts(): Promise<PageCounts>;
+  pagesKnown(file: string, pages: number): Promise<void>;
   print(): Promise<PrintOutcome>;
   openPdf(path: string): Promise<void>;
   revealPdf(path: string): Promise<void>;
@@ -74,6 +82,7 @@ export interface StudioApi {
   cancelQuit(): Promise<void>;
   onMenu(cb: (cmd: MenuCommand) => void): () => void;
   onBookChanged(cb: (files: string[]) => void): () => void;
+  onPageCounts(cb: (p: PageCounts) => void): () => void;
   onPrintProgress(cb: (p: PrintProgress) => void): () => void;
   onQueryClose(cb: () => void): () => void;
   onOpenFolder(cb: (folder: string) => void): () => void;

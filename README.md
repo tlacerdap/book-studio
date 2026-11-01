@@ -17,7 +17,7 @@ Open a book folder (File > Open Book Folder, or Open Recent). A folder is a book
 none, the app offers to create one. The folder is watched: a chapter changed outside the app (by Claude Code, say)
 reloads silently, or, if you have unsaved edits, a banner asks Reload or Keep mine.
 
-- **Left panel:** Parts and chapters, the open chapter's H2/H3 outline, and a badge with its count of open notes.
+- **Left panel:** Parts and chapters, the open chapter's H2/H3 outline, a badge with its count of open notes, and how long the book is: pages per chapter and a total. The count comes from laying every chapter out quietly in the background (about 20 seconds the first time, remembered after that) and matches the numbered pages of the PDF; the PDF also has a cover and the contents.
 - **Reading view:** the chapter laid out exactly as it prints (same styles, same pagination rules). Read only; click a
   block, or select text, then add a note. Blocks with notes get a thin rule on their left; notes are cards in the margin.
 - **Source view:** the markdown in CodeMirror, editable. Cmd/Ctrl+S saves; leaving a chapter or closing the window with
