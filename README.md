@@ -35,12 +35,15 @@ reloads silently, or, if you have unsaved edits, a banner asks Reload or Keep mi
 | `[` and `]` | previous and next chapter |
 | `P` | print PDF |
 | `O` | open a book folder |
+| `=` and `-` | zoom the page in and out (the text size in the source view) |
+| `0` | actual size |
+| `9` | fit the page to the window |
 
 **Notes** are kept in the markdown, one comment on its own line directly after the block: `<!-- Q: ... -->` a question,
 `<!-- E: ... -->` an edit request, `<!-- ? -->` confused, `<!-- A: ... -->` an answer written by Claude Code. The
 Obsidian forms (`%%Q: ...%%`, `%%?%%`) work the same. Adding, editing or removing a note changes only its own lines and
-never reformats anything else; files are written atomically. In the reading view pick Q, E or ? (press the letter), type,
-press Enter. An answer shows under its note; the check mark ("Mark read") removes the note and its answer.
+never reformats anything else; files are written atomically. In the reading view pick Question (Q), Change this (E) or Lost me (?), type,
+press Enter. The `?` button in the toolbar explains this and copies the command to give Claude Code (`process notes in chapter NN`). An answer shows under its note; the check mark ("Mark read") removes the note and its answer.
 `CLAUDE.md` in the book repo tells Claude Code how to process them.
 
 **Safety.** The window is sandboxed, with context isolation, no Node, a strict content security policy and a narrow

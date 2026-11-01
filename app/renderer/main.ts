@@ -50,6 +50,8 @@ const reading = new ReadingView(viewEls.reading, api, {
   onActive: () => renderToolbar(),
   onError: (m) => toast(`Could not lay out this chapter: ${m}`),
   onToast: (m) => toast(m),
+  onZoom: () => renderToolbar(),
+  onCopy: (text) => void api.copyText(text).then(() => toast(`Copied. Paste it to Claude Code: ${text}`)),
 });
 
 const source = new SourceView(viewEls.source, {
@@ -129,12 +131,61 @@ function renderToolbar(): void {
       h("button", { type: "button", "aria-pressed": String(view === "reading"), title: `Reading view (${mod}+/)`, onClick: () => void setView("reading") }, "Reading"),
       h("button", { type: "button", "aria-pressed": String(view === "source"), title: `Source view (${mod}+/)`, onClick: () => void setView("source") }, "Source"),
     );
+    const pct = Math.round(reading.zoomLevel * 100);
     bar.append(
       seg,
-      h("button", { class: "tb-btn", type: "button", title: `Add a note to the selected block (${mod}+Shift+M)`, onClick: () => addNote() }, "Add note"),
+      ...(view === "reading"
+        ? [h(
+            "div",
+            { class: "seg zoom", role: "group", "aria-label": "Zoom" },
+            h("button", { type: "button", title: `Zoom out (${mod}+-)`, "aria-label": "Zoom out", onClick: () => reading.zoomBy(-0.1) }, "\u2212"),
+            h("button", { type: "button", class: "pct", title: `Fit page to window (${mod}+9). Actual size: ${mod}+0`, onClick: () => reading.fitWidth() }, `${pct}%`),
+            h("button", { type: "button", title: `Zoom in (${mod}++)`, "aria-label": "Zoom in", onClick: () => reading.zoomBy(0.1) }, "+"),
+          )]
+        : []),
+      h("button", { class: "icon-btn", type: "button", title: "How notes for Claude work", "aria-label": "How notes work", onClick: () => toggleHelp() }, "?"),
+      h("button", { class: "tb-btn", type: "button", title: `Leave a note for Claude on the selected block (${mod}+Shift+M)`, onClick: () => addNote() }, "Add note"),
       h("button", { class: "tb-btn primary", type: "button", disabled: busy, title: `Make the PDF (${mod}+P)`, onClick: () => void printPdf() }, busy ? "Making PDF..." : "Print PDF"),
     );
   }
+}
+
+/** Zoom the page in the reading view, the text size in the source view. */
+function zoomTo(step: number, reset = false): void {
+  if (view === "reading") {
+    if (reset) reading.setZoom(1);
+    else reading.zoomBy(step);
+    return;
+  }
+  sourceScale = reset ? 1 : Math.min(2, Math.max(0.6, Math.round((sourceScale + step) * 10) / 10));
+  source.setScale(sourceScale);
+}
+
+let sourceScale = 1;
+
+/** A small explanation of notes, with the command for the open chapter ready to copy. */
+function toggleHelp(): void {
+  const old = document.getElementById("help-pop");
+  if (old) return old.remove();
+  const cmd = reading.instruction();
+  const pop = h(
+    "div",
+    { id: "help-pop", role: "dialog", "aria-label": "How notes work" },
+    h("h3", {}, "Notes for Claude"),
+    h("p", {}, "Click a paragraph, then press Add note. Choose what kind of note it is:"),
+    h(
+      "ul",
+      {},
+      h("li", {}, h("b", {}, "Question (Q)"), ": you do not understand it. Claude rewrites the text so you would not have to ask, and tells you what it changed."),
+      h("li", {}, h("b", {}, "Change this (E)"), ": you want it edited. Say what, and Claude makes the edit."),
+      h("li", {}, h("b", {}, "Lost me (?)"), ": it confused you and you cannot say why."),
+    ),
+    h("p", {}, "The note is written into this chapter's file, as a comment under the paragraph. It does not show in the book or the PDF. Claude Code finds it when you tell it:"),
+    h("div", { class: "cmd" }, h("code", {}, cmd), h("button", { class: "tb-btn", type: "button", onClick: () => void api.copyText(cmd).then(() => toast("Copied. Paste it to Claude Code.")) }, "Copy")),
+    h("p", { class: "small" }, "Claude answers under each note. Click the check mark on an answer once you have read it to clear it."),
+    h("button", { class: "tb-btn", type: "button", onClick: () => pop.remove() }, "Close"),
+  );
+  document.body.append(pop);
 }
 
 function togglePanel(): void {
@@ -490,6 +541,18 @@ api.onMenu((cmd: MenuCommand) => {
       break;
     case "open-book":
       void openDialog();
+      break;
+    case "zoom-in":
+      zoomTo(+0.1);
+      break;
+    case "zoom-out":
+      zoomTo(-0.1);
+      break;
+    case "zoom-reset":
+      zoomTo(0, true);
+      break;
+    case "zoom-fit":
+      if (view === "reading") reading.fitWidth();
       break;
   }
 });

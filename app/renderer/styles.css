@@ -83,13 +83,13 @@ button { font: inherit; color: inherit; }
 /* ---- Reading view ---------------------------------------------------------------------------- */
 
 #reading { overflow: auto; background: var(--desk); position: relative; }
-.stage { position: relative; display: flex; justify-content: center; align-items: flex-start; min-width: min-content; }
-.frame-wrap { position: relative; flex: none; }
-.frame-wrap iframe { display: block; border: 0; background: var(--desk); }
-.notes-col { position: relative; flex: none; width: 300px; padding-right: 16px; }
+.stage { position: relative; }
+.frame-wrap { position: absolute; top: 0; }
+.frame-wrap iframe { display: block; border: 0; background: var(--desk); transform-origin: 0 0; }
+.notes-col { position: absolute; top: 0; }
 .loading { position: sticky; top: 0; z-index: 3; padding: 10px 16px; color: var(--ink-3); background: linear-gradient(var(--desk), transparent); }
 
-.card { position: absolute; left: 0; right: 16px; background: #fff; border: 1px solid var(--line); border-left: 3px solid var(--ink); border-radius: 6px; padding: 7px 10px 8px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04); cursor: pointer; font-size: 12.5px; }
+.card { position: absolute; left: 0; right: 0; background: #fff; border: 1px solid var(--line); border-left: 3px solid var(--ink); border-radius: 6px; padding: 7px 10px 8px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04); cursor: pointer; font-size: 12.5px; }
 .card:hover { border-color: #b9b5ad; border-left-color: var(--ink); }
 .card.active { box-shadow: 0 0 0 2px rgba(31, 30, 29, 0.35); }
 .card .kind { display: inline-block; min-width: 16px; margin-right: 6px; font-weight: 600; font-size: 11px; letter-spacing: 0.04em; }
@@ -152,3 +152,24 @@ button { font: inherit; color: inherit; }
 #report .passed { color: var(--ink-3); font-size: 12px; margin-top: 12px; }
 
 #toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 8px 14px; border-radius: 8px; z-index: 10; }
+
+.seg.zoom button { padding: 5px 9px; }
+.seg.zoom .pct { min-width: 52px; font-variant-numeric: tabular-nums; }
+.card.help { cursor: default; border-left-color: var(--line); background: #fbfaf8; color: var(--ink-2); }
+.card.help ul { margin: 6px 0; padding-left: 18px; }
+.card.help code { font-family: var(--font-mono); font-size: 12px; background: #efede9; padding: 1px 5px; border-radius: 4px; color: var(--ink); }
+.card.help .cmd { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
+.card.help .cmd button { border: 1px solid var(--line); background: #fff; border-radius: 5px; padding: 2px 10px; cursor: pointer; }
+.card.help .cmd button:hover { border-color: #b9b5ad; }
+.editor .picker button { padding: 2px 9px; font-weight: 400; }
+.editor .picker button b { font-weight: 700; }
+.card .kind { min-width: 0; margin-right: 8px; text-transform: uppercase; }
+
+#help-pop { position: fixed; top: 52px; right: 16px; width: 380px; z-index: 20; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px 14px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.16); font-size: 13px; }
+#help-pop h3 { margin: 0 0 6px; font: 400 18px/1.2 var(--font-serif); }
+#help-pop p { margin: 6px 0; color: var(--ink-2); }
+#help-pop ul { margin: 6px 0; padding-left: 18px; color: var(--ink-2); }
+#help-pop li { margin: 3px 0; }
+#help-pop .small { font-size: 12px; color: var(--ink-3); }
+#help-pop .cmd { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+#help-pop code { font-family: var(--font-mono); font-size: 12px; background: #efede9; padding: 3px 7px; border-radius: 4px; }

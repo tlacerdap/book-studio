@@ -1,7 +1,7 @@
 // Book Studio's main process: windows, the menu, the book on disk, and the print job. The window itself never touches
 // the file system; it asks for one named thing at a time through the preload bridge (see app/shared/api.ts).
 
-import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, shell, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, protocol, session, shell, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -287,6 +287,7 @@ function registerIpc(): void {
   handle("external:open", async (url: string) => {
     if (/^https?:\/\//i.test(String(url))) await shell.openExternal(String(url));
   });
+  handle("clipboard:write", (text: string) => clipboard.writeText(String(text).slice(0, 2000)));
   handle("print:run", () => print());
   handle("pdf:open", async (p: string) => {
     const b = requireBook();
@@ -363,6 +364,12 @@ function buildMenu(): void {
         { label: "Show or Hide Chapters", accelerator: "CmdOrCtrl+\\", click: () => send("toggle-panel") },
         { label: "Previous Chapter", accelerator: "CmdOrCtrl+[", click: () => send("prev-chapter") },
         { label: "Next Chapter", accelerator: "CmdOrCtrl+]", click: () => send("next-chapter") },
+        { type: "separator" },
+        { type: "separator" },
+        { label: "Zoom In", accelerator: "CmdOrCtrl+=", click: () => send("zoom-in") },
+        { label: "Zoom Out", accelerator: "CmdOrCtrl+-", click: () => send("zoom-out") },
+        { label: "Actual Size", accelerator: "CmdOrCtrl+0", click: () => send("zoom-reset") },
+        { label: "Fit Page to Window", accelerator: "CmdOrCtrl+9", click: () => send("zoom-fit") },
         { type: "separator" },
         { label: "Reload Book", click: () => send("reload-book") },
         ...(app.isPackaged ? [] : [{ type: "separator" } as MenuItemConstructorOptions, { role: "toggleDevTools" } as MenuItemConstructorOptions]),

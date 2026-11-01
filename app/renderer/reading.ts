@@ -16,6 +16,9 @@ export interface ReadingHooks {
   onActive(src: string | null): void;
   onError(message: string): void;
   onToast(message: string): void;
+  onZoom(zoom: number, fit: boolean): void;
+  /** Put text on the clipboard. */
+  onCopy(text: string): void;
 }
 
 interface Block extends BlockRange {
@@ -25,7 +28,22 @@ interface Block extends BlockRange {
 
 type Editing = { kind: "new"; src: string | null } | { kind: "edit"; note: Note } | null;
 
+const KIND_NAME: Record<string, string> = { Q: "Question", E: "Change this", "?": "Lost me" };
+const KIND_KEY: Record<string, string> = { Q: "Q", E: "E", "?": "?" };
+const KIND_HELP: Record<string, string> = {
+  Q: "Question: you do not understand something. Claude fixes the text so you would not have to ask, and tells you what it changed.",
+  E: "Change this: you want it edited. Say what, and Claude makes the edit.",
+  "?": "Lost me: this block confused you and you cannot say why. Claude rewrites it more clearly.",
+};
+const PLACEHOLDER: Record<string, string> = {
+  Q: "What do you not understand?",
+  E: "What should change?",
+  "?": "Optional: what lost you?",
+};
 const FRAME_WIDTH = 840;
+const NOTES_WIDTH = 296;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 2;
 
 export class ReadingView {
   private scroller: HTMLElement;
@@ -43,6 +61,11 @@ export class ReadingView {
   private findWaiter: ((r: { found: boolean; y: number }) => void) | null = null;
   private pendingScroll: number | null = null;
   private renderToken = 0;
+  private wrap: HTMLElement;
+  private zoom = 1;
+  private fit = false;
+  private docHeight = 400;
+  private resizer: ResizeObserver;
 
   constructor(
     private root: HTMLElement,
@@ -53,8 +76,19 @@ export class ReadingView {
     this.loading = h("div", { class: "loading", text: "Laying out pages..." });
     this.frame = h("iframe", { title: "Chapter", width: FRAME_WIDTH, height: 400, scrolling: "no", tabindex: "-1" });
     this.notesCol = h("div", { class: "notes-col" });
-    this.stage = h("div", { class: "stage" }, h("div", { class: "frame-wrap" }, this.frame), this.notesCol);
+    this.wrap = h("div", { class: "frame-wrap" }, this.frame);
+    this.stage = h("div", { class: "stage" }, this.wrap, this.notesCol);
     this.root.append(this.loading, this.stage);
+    try {
+      const saved = parseFloat(localStorage.getItem("reading-zoom") ?? "");
+      if (saved >= MIN_ZOOM && saved <= MAX_ZOOM) this.zoom = saved;
+      this.fit = localStorage.getItem("reading-fit") === "1";
+    } catch {
+      /* no saved zoom */
+    }
+    // The page stays centred in whatever room the window has, whenever the window or the panel changes size.
+    this.resizer = new ResizeObserver(() => this.layout());
+    this.resizer.observe(this.scroller);
     window.addEventListener("message", (e) => this.onMessage(e));
   }
 
@@ -105,6 +139,66 @@ export class ReadingView {
     clear(this.notesCol);
   }
 
+  // ---- zoom and centring ---------------------------------------------------------------------
+
+  get zoomLevel(): number {
+    return this.zoom;
+  }
+
+  setZoom(z: number, opts: { fit?: boolean } = {}): void {
+    const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(z * 100) / 100));
+    const before = this.zoom;
+    // Keep the same spot of the chapter in the middle of the window.
+    const mid = (this.scroller.scrollTop + this.scroller.clientHeight / 2) / before;
+    this.zoom = next;
+    this.fit = !!opts.fit;
+    try {
+      localStorage.setItem("reading-zoom", String(next));
+      localStorage.setItem("reading-fit", this.fit ? "1" : "0");
+    } catch {
+      /* not remembered */
+    }
+    this.layout();
+    this.scroller.scrollTop = Math.max(0, mid * next - this.scroller.clientHeight / 2);
+    this.hooks.onZoom(this.zoom, this.fit);
+  }
+
+  zoomBy(step: number): void {
+    this.setZoom(this.zoom + step);
+  }
+
+  /** Scale the page to the width of the window (leaving room for the notes). */
+  fitWidth(): void {
+    this.setZoom(this.fitZoom(), { fit: true });
+  }
+
+  private fitZoom(): number {
+    const room = this.scroller.clientWidth - 2 * NOTES_WIDTH * 0.6 - 32;
+    return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, room / FRAME_WIDTH));
+  }
+
+  /**
+   * The page sits in the middle of the room the window gives it. When the notes need more room than a centred page
+   * leaves on its right, the page moves left by just that much, never further.
+   */
+  private layout(): void {
+    const z = this.fit ? this.fitZoom() : this.zoom;
+    if (this.fit) this.zoom = z;
+    const room = this.scroller.clientWidth;
+    const w = FRAME_WIDTH * z;
+    const h = this.docHeight * z;
+    const needRight = NOTES_WIDTH + 12 + 16;
+    let left = (room - w) / 2;
+    if (this.notesCol.childElementCount > 0 && left < needRight) left = Math.max(12, room - w - needRight);
+    left = Math.max(12, left);
+    this.wrap.style.cssText = `left:${left}px;width:${w}px;height:${h}px`;
+    this.frame.style.transform = `scale(${z})`;
+    this.notesCol.style.cssText = `left:${left + w + 12}px;width:${NOTES_WIDTH}px;height:${h}px`;
+    this.wrap.style.transition = this.notesCol.style.transition = "left 0.15s";
+    this.stage.style.cssText = `width:${Math.max(room, left + w + needRight + 12)}px;height:${h + 8}px`;
+    this.loading.style.zIndex = "3";
+  }
+
   // ---- messages from the frame ---------------------------------------------------------------
 
   private onMessage(e: MessageEvent): void {
@@ -114,11 +208,11 @@ export class ReadingView {
     switch (m.type) {
       case "ready": {
         this.blocks = (m.blocks as Block[]).map((b) => ({ ...b, ...parseSrc(b.src) })).sort((a, b) => a.top - b.top);
-        const height = Math.ceil(m.height as number);
-        this.frame.style.height = `${height}px`;
-        this.notesCol.style.height = `${height}px`;
+        this.docHeight = Math.ceil(m.height as number);
+        this.frame.style.height = `${this.docHeight}px`;
         this.ready = true;
         this.loading.hidden = true;
+        this.layout();
         if (this.pendingScroll !== null) this.scroller.scrollTop = this.pendingScroll;
         this.pendingScroll = null;
         this.drawNotes();
@@ -170,7 +264,7 @@ export class ReadingView {
     if (!this.ready) return this.hooks.onToast("The pages are still being laid out.");
     let src = this.active;
     if (!src) {
-      const top = this.scroller.scrollTop + 80;
+      const top = (this.scroller.scrollTop + 80) / this.zoom;
       src = (this.blocks.find((b) => b.bottom > top) ?? this.blocks[0])?.src ?? null;
       if (!src) return this.hooks.onToast("There is nothing to attach a note to yet.");
       this.setActive(src);
@@ -179,7 +273,7 @@ export class ReadingView {
     this.drawNotes();
     this.notesCol.querySelector<HTMLElement>(".editor .picker button[aria-pressed='true']")?.focus();
     const b = this.blocks.find((x) => x.src === src);
-    if (b) this.ensureVisible(b.top);
+    if (b) this.ensureVisible(b.top * this.zoom);
   }
 
   private ensureVisible(y: number): void {
@@ -199,11 +293,15 @@ export class ReadingView {
     clear(this.notesCol);
     const { groups } = placeNotes(this.text, this.blocks);
     const items: { y: number; order: number; el: HTMLElement }[] = [];
-    const topOf = (src: string | null): number => (src ? (this.blocks.find((b) => b.src === src)?.top ?? 0) : 24);
+    const z = this.zoom;
+    const topOf = (src: string | null): number => (src ? (this.blocks.find((b) => b.src === src)?.top ?? 0) * z : 24);
     for (const g of groups) for (const t of g.threads) items.push({ y: topOf(g.src), order: 0, el: this.card(g, t) });
+    const help = this.helpCard(groups);
+    if (help) items.push({ y: 0, order: -1, el: help });
     if (this.editing?.kind === "new") items.push({ y: topOf(this.editing.src), order: 1, el: this.composer(this.editing.src) });
     items.sort((a, b) => a.y - b.y || a.order - b.order);
     for (const it of items) this.notesCol.append(it.el);
+    this.layout(); // the page makes room for the margin only while there is something in it
     // Cards sit next to their block; when two would overlap, the later one moves down.
     let floor = 0;
     for (const it of items) {
@@ -213,12 +311,33 @@ export class ReadingView {
     this.sendMarks();
   }
 
+  /** The command to give Claude Code for this chapter: the leading digits of the file name are its chapter number. */
+  instruction(): string {
+    const name = this.file.split(/[\\/]/).pop() ?? "";
+    const num = /^\d+/.exec(name)?.[0] ?? name;
+    return `process notes in chapter ${num}`;
+  }
+
+  /** Top of the margin: how notes work when there are none yet, or what to tell Claude when some are waiting. */
+  private helpCard(groups: NoteGroup[]): HTMLElement | null {
+    const open = groups.reduce((n, g) => n + g.threads.filter((t) => t.answers.length === 0).length, 0);
+    if (open > 0) {
+      const text = this.instruction();
+      return h(
+        "div",
+        { class: "card help" },
+        h("div", {}, h("b", {}, `${open} note${open === 1 ? "" : "s"} waiting for Claude.`), " They are saved in this chapter's file. To have Claude Code deal with them, tell it:"),
+        h("div", { class: "cmd" }, h("code", {}, text), h("button", { type: "button", onClick: () => this.hooks.onCopy(text) }, "Copy")),
+      );
+    }
+    return null;
+  }
+
   private picker(initial: NoteKind, onPick: (k: NoteKind) => void, onChosen: () => void): HTMLElement {
     const kinds: NoteKind[] = ["Q", "E", "?"];
-    const names: Record<string, string> = { Q: "Question", E: "Edit request", "?": "Confused" };
     const wrap = h("div", { class: "picker", role: "group", "aria-label": "Kind of note" });
     const buttons = kinds.map((k) =>
-      h("button", { type: "button", title: names[k], "aria-pressed": String(k === initial), onClick: () => select(k) }, k),
+      h("button", { type: "button", title: KIND_HELP[k], "aria-pressed": String(k === initial), onClick: () => select(k) }, h("b", {}, KIND_KEY[k]), ` ${KIND_NAME[k]}`),
     );
     const select = (k: NoteKind) => {
       buttons.forEach((b, i) => b.setAttribute("aria-pressed", String(kinds[i] === k)));
@@ -238,7 +357,7 @@ export class ReadingView {
 
   private editor(opts: { kind: NoteKind; text: string; onSave(kind: NoteKind, text: string): void; onCancel(): void; onDelete?: () => void }): HTMLElement {
     let kind = opts.kind;
-    const area = h("textarea", { rows: 2, placeholder: kind === "?" ? "Optional detail" : "Write the note", "aria-label": "Note text" });
+    const area = h("textarea", { rows: 2, placeholder: PLACEHOLDER[kind], "aria-label": "Note text" });
     area.value = opts.text;
     const save = () => {
       const text = area.value.trim();
@@ -247,7 +366,7 @@ export class ReadingView {
     };
     const pick = this.picker(kind, (k) => {
       kind = k;
-      area.placeholder = k === "?" ? "Optional detail" : "Write the note";
+      area.placeholder = PLACEHOLDER[k];
     }, () => area.focus());
     area.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
@@ -268,7 +387,7 @@ export class ReadingView {
     const row = h(
       "div",
       { class: "row" },
-      h("span", { class: "hint", text: "Q, E or ? then Enter to save, Esc to cancel" }),
+      h("span", { class: "hint", text: "Press Q, E or ? to choose. Enter saves, Esc cancels." }),
       opts.onDelete ? h("button", { class: "del", type: "button", onClick: opts.onDelete }, "Delete") : null,
     );
     return h("div", { class: "editor" }, pick, area, row);
@@ -314,7 +433,7 @@ export class ReadingView {
       return card;
     }
     card.append(
-      h("div", { class: "text" }, h("span", { class: "kind" }, n.kind), n.text || (n.kind === "?" ? "Confused here" : ""), answered ? null : h("span", { class: "open-dot", title: "Not processed yet" })),
+      h("div", { class: "text" }, h("span", { class: "kind" }, KIND_NAME[n.kind]), n.text || (n.kind === "?" ? "This lost me" : ""), answered ? null : h("span", { class: "open-dot", title: "Not processed yet" })),
     );
     for (const a of t.answers) {
       card.append(
@@ -331,7 +450,7 @@ export class ReadingView {
       if (group.src) {
         this.setActive(group.src);
         const b = this.blocks.find((x) => x.src === group.src);
-        if (b) this.ensureVisible(b.top);
+        if (b) this.ensureVisible(b.top * this.zoom);
       }
       this.editing = { kind: "edit", note: n };
       this.drawNotes();
@@ -352,7 +471,7 @@ export class ReadingView {
   scrollToLine(origLine: number): void {
     const range = blockStartingAt(this.text, this.blocks, origLine);
     const b = range && this.blocks.find((x) => x.src === range.src);
-    if (b) this.scroller.scrollTop = Math.max(0, b.top - 40);
+    if (b) this.scroller.scrollTop = Math.max(0, b.top * this.zoom - 40);
   }
 
   /** The first line of the file for the active block, so the source view can open where the reader was. */
@@ -370,7 +489,7 @@ export class ReadingView {
       this.post({ type: "find", query, backwards });
       setTimeout(() => resolve({ found: false, y: 0 }), 1500);
     });
-    if (result.found) this.ensureVisible(result.y);
+    if (result.found) this.ensureVisible(result.y * this.zoom);
     return result.found;
   }
 

@@ -78,6 +78,12 @@ export class SourceView {
     }
   }
 
+  /** Text size, as a multiple of the default (the zoom buttons also size the source view). */
+  setScale(scale: number): void {
+    this.view.dom.style.fontSize = `${13 * scale}px`;
+    this.view.requestMeasure();
+  }
+
   focus(): void {
     this.view.focus();
   }

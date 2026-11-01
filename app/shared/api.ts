@@ -47,7 +47,11 @@ export type MenuCommand =
   | "next-chapter"
   | "print"
   | "reload-book"
-  | "open-book";
+  | "open-book"
+  | "zoom-in"
+  | "zoom-out"
+  | "zoom-reset"
+  | "zoom-fit";
 
 export interface StudioApi {
   platform: string;
@@ -61,6 +65,7 @@ export interface StudioApi {
   writeChapter(file: string, text: string): Promise<{ mtimeMs: number }>;
   prepareReading(file: string, text: string): Promise<{ url: string }>;
   openExternal(url: string): Promise<void>;
+  copyText(text: string): Promise<void>;
   print(): Promise<PrintOutcome>;
   openPdf(path: string): Promise<void>;
   revealPdf(path: string): Promise<void>;

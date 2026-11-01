@@ -23,6 +23,7 @@ const api: StudioApi = {
   writeChapter: (file, text) => call("chapter:write", file, text),
   prepareReading: (file, text) => call("reading:prepare", file, text),
   openExternal: (url) => call("external:open", url),
+  copyText: (text) => call("clipboard:write", text),
   print: () => call("print:run"),
   openPdf: (p) => call("pdf:open", p),
   revealPdf: (p) => call("pdf:reveal", p),
