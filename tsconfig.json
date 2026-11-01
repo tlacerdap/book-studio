@@ -12,5 +12,5 @@
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["core/**/*.ts", "electron/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"]
+  "include": ["app/**/*.ts", "core/**/*.ts", "electron/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"]
 }

@@ -349,7 +349,7 @@ function squash(s: string): string {
 }
 
 /** Compare contents page numbers with where each chapter really starts: bookmarks and the number printed in the footer. */
-async function checkToc(doc: pdfjs.PDFDocumentProxy, pages: PageInfo[], S: StyleMetrics): Promise<{ problems: string[]; note: string }> {
+async function checkToc(doc: pdfjs.PDFDocumentProxy, pages: PageInfo[], S: StyleMetrics): Promise<{ problems: string[]; note: string; marks: { title: string; page: number }[] }> {
   const entries: { title: string; printed: number; part: boolean }[] = [];
   const stripLabel = (words: string[]): { words: string[]; part: boolean } => {
     const part = /^part$/i.test(words[0] ?? "");
@@ -374,7 +374,7 @@ async function checkToc(doc: pdfjs.PDFDocumentProxy, pages: PageInfo[], S: Style
     }
   }
   if (process.env.BOOKSTUDIO_DEBUG) for (const p of pages) if (/^[ivxlc]+$/.test(p.label)) for (const l of p.lines) console.error(`TOC ${p.label} y=${l.y.toFixed(1)} ${l.kind} ${JSON.stringify(l.text)}`);
-  if (!entries.length) return { problems: ["no contents entries found in the front matter"], note: "" };
+  if (!entries.length) return { problems: ["no contents entries found in the front matter"], note: "", marks: [] };
 
   const marks: { title: string; page: number }[] = [];
   const walk = async (items: Awaited<ReturnType<typeof doc.getOutline>>): Promise<void> => {
@@ -416,7 +416,7 @@ async function checkToc(doc: pdfjs.PDFDocumentProxy, pages: PageInfo[], S: Style
     lastChapterPage = real ?? lastChapterPage;
   }
   void lastChapterPage;
-  return { problems, note: `${checked} of ${entries.length} contents entries verified against bookmarks and footers` };
+  return { problems, note: `${checked} of ${entries.length} contents entries verified against bookmarks and footers`, marks };
 }
 
 function checkDashes(pages: PageInfo[], sources: string[]): string[] {
@@ -534,6 +534,8 @@ export interface CheckResult {
 }
 
 export interface CheckReport {
+  /** The PDF's bookmarks with their 1-based page numbers (chapters and their headings). */
+  bookmarks: { title: string; page: number }[];
   pdf: string;
   pages: number;
   bodyPages: number;
@@ -616,6 +618,7 @@ export async function runChecks(pdfPath: string, book: BookConfig, opts: CheckOp
   }
   const failures = results.filter((r) => r.status === "fail").length;
   const report: CheckReport = {
+    bookmarks: toc.marks.map((m) => ({ title: m.title, page: m.page + 1 })),
     pdf: pdfPath,
     pages: doc.numPages,
     bodyPages: nBody,

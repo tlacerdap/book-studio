@@ -5,7 +5,7 @@ import path from "node:path";
 import type { MarkdownIt } from "markdown-it";
 import { chapterFiles, indexFile, type BookConfig } from "./config.ts";
 import { chapterId, makeMarkdown } from "./mdrender.ts";
-import { stripNotes } from "./notes.ts";
+import { openNotes, parseNotes, stripNotes } from "./notes.ts";
 
 const ROMAN = ["0", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
 // "Chapter 3 - Title" or "Appendix A - Title" at the top of a chapter file is split into a label and a title.
@@ -157,4 +157,49 @@ export function readChapters(book: BookConfig, files: string[]): Chapter[] {
   const chapters = files.map((f) => loadChapter(f, md));
   assignParts(chapters, readIndex(book));
   return chapters;
+}
+
+/** What the app's side panel needs about a chapter, without rendering it. */
+export interface ChapterSummary {
+  file: string;
+  /** Absolute path. */
+  path: string;
+  number: number | null;
+  label: string;
+  title: string;
+  partNumber: number | null;
+  partLabel: string;
+  partName: string;
+  /** Notes with no answer yet (Q, E and ? without an A below). */
+  openNotes: number;
+  /** Every note, answered or not. */
+  notes: number;
+}
+
+export function summariseChapter(file: string, text: string, mapping: Map<number, [number, string]>): ChapterSummary {
+  const name = path.basename(file);
+  const stripped = stripNotes(text).text;
+  const h1 = /^# +(.+?)\s*$/m.exec(stripped);
+  const raw = h1 ? h1[1] : name.replace(/\.md$/, "");
+  const m = TITLE_RE.exec(raw);
+  const n = fileNumber(name);
+  const entry = n === null ? undefined : mapping.get(n);
+  const notes = parseNotes(text);
+  return {
+    file: name,
+    path: file,
+    number: n,
+    label: m ? m[1] : "",
+    title: m ? m[2] : raw,
+    partNumber: entry ? entry[0] : null,
+    partLabel: entry ? (entry[0] < ROMAN.length ? `Part ${ROMAN[entry[0]]}` : `Part ${entry[0]}`) : "",
+    partName: entry ? entry[1] : "",
+    openNotes: openNotes(notes).length,
+    notes: notes.filter((x) => x.kind !== "A").length,
+  };
+}
+
+export function listChapters(book: BookConfig, files: string[]): ChapterSummary[] {
+  const mapping = readIndex(book);
+  return files.map((f) => summariseChapter(f, fs.readFileSync(f, "utf8"), mapping));
 }

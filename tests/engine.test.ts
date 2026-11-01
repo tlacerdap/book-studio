@@ -104,3 +104,39 @@ describe("chapter lint", () => {
     expect(p).toMatch(/Langchain/);
   });
 });
+
+import { locateProblems } from "../core/print.ts";
+import type { CheckReport } from "../core/check.ts";
+
+describe("print report: which chapter a problem belongs to", () => {
+  const report = {
+    bookmarks: [
+      { title: "First chapter", page: 4 },
+      { title: "Second chapter", page: 20 },
+    ],
+    results: [
+      { title: "a check", status: "fail", note: "", problems: ["page 25 (printed 22): heading 'X' has only 2 line(s) after it", "colour found on page(s) 5, 30", "pages 21-22: code split 12 + 2 lines", "contents entry 'Second chapter' has no matching bookmark", "01-first.md: 'some line' is missing", "nothing to locate here"] },
+      { title: "fine", status: "pass", note: "", problems: [] },
+    ],
+  } as unknown as CheckReport;
+  const chapters = [
+    { file: "01-first.md", title: "First chapter" },
+    { file: "02-second.md", title: "Second chapter" },
+  ];
+
+  it("uses the page, a quoted chapter title or a file name", () => {
+    const got = locateProblems(report, chapters).map((p) => [p.chapter, p.page]);
+    expect(got).toEqual([
+      ["02-second.md", 25],
+      ["01-first.md", 5],
+      ["02-second.md", 21],
+      ["02-second.md", null],
+      ["01-first.md", null],
+      [null, null],
+    ]);
+  });
+
+  it("ignores checks that passed", () => {
+    expect(locateProblems(report, chapters).every((p) => p.check === "a check")).toBe(true);
+  });
+});

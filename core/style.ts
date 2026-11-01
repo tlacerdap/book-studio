@@ -18,18 +18,19 @@ export function styleFiles(book: BookConfig, extra: string[] = [], opts: { paged
 }
 
 /** Relative url(...) values become absolute file URLs, resolved against the stylesheet that contains them. */
-function absoluteUrls(css: string, dir: string): string {
+function absoluteUrls(css: string, dir: string, urlFor: (abs: string) => string): string {
   return css.replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/g, (whole, q: string, u: string) => {
     if (/^(?:[a-z][a-z0-9+.-]*:|#|\/\/)/i.test(u)) return whole;
-    return `url(${q}${pathToFileURL(path.resolve(dir, u)).href}${q})`;
+    return `url(${q}${urlFor(path.resolve(dir, u))}${q})`;
   });
 }
 
-export function readCss(files: string[], opts: { absoluteUrls?: boolean } = {}): string {
+export function readCss(files: string[], opts: { absoluteUrls?: boolean; urlFor?: (abs: string) => string } = {}): string {
+  const urlFor = opts.urlFor ?? ((abs: string) => pathToFileURL(abs).href);
   return files
     .map((f) => {
       const css = fs.readFileSync(f, "utf8");
-      return opts.absoluteUrls ? absoluteUrls(css, path.dirname(f)) : css;
+      return opts.absoluteUrls ? absoluteUrls(css, path.dirname(f), urlFor) : css;
     })
     .join("\n");
 }
@@ -121,4 +122,16 @@ export function resolvePageVars(css: string): string {
     i = j;
   }
   return out + css.slice(i);
+}
+
+/**
+ * Chromium applies orphans, widows and break-inside itself when it fragments content, and Paged.js fragments content
+ * into columns. Its own overflow detection assumes text flows on continuously, so Chromium's adjustments strand
+ * blocks in the hidden overflow column. Hand the three properties to our own rules as custom properties instead.
+ */
+export function forPaged(text: string): string {
+  return text
+    .replace(/(?<![\w-])orphans(\s*:)/g, "--pg-orphans$1")
+    .replace(/(?<![\w-])widows(\s*:)/g, "--pg-widows$1")
+    .replace(/(?<![\w-])break-inside(\s*:)/g, "--pg-break-inside$1");
 }

@@ -10,6 +10,7 @@
 
 import MarkdownIt, { type MarkdownIt as Markdown, type StateCore, type Token } from "markdown-it";
 import footnote from "markdown-it-footnote";
+import { chapterId } from "./ids.ts";
 import frontMatter from "markdown-it-front-matter";
 import hljs from "highlight.js/lib/core";
 import python from "highlight.js/lib/languages/python";
@@ -55,10 +56,7 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-export function chapterId(fileName: string): string {
-  const stem = fileName.replace(/\.[^.]*$/, "").toLowerCase();
-  return "ch-" + stem.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
+export { chapterId };
 
 // markdown-it's own `replacements` rule is left off because it would also turn `--` and `---` into
 // en and em dashes, and the book uses plain hyphens. Only the ellipsis is applied.

@@ -5,6 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 function findPackageRoot(): string {
+  // The app sets this: inside a packaged app the code is bundled and import.meta.url is not a useful place to start.
+  if (process.env.BOOK_STUDIO_ROOT) return process.env.BOOK_STUDIO_ROOT;
   let dir = path.dirname(fileURLToPath(import.meta.url));
   for (let i = 0; i < 8; i++) {
     if (fs.existsSync(path.join(dir, "styles", "book.css"))) return dir;

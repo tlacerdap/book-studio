@@ -1,11 +1,51 @@
 # book-studio
 
 Book Studio reads a book folder and renders it: a print-ready A4 PDF, typographic and ink checks on that PDF, and
-a desktop app (macOS, Windows, Linux) for reading, annotating and printing. It holds all the code, fonts and
+a desktop app (macOS, Windows, Linux, Electron and TypeScript) for reading, annotating and printing. It holds all the code, fonts and
 CSS; the book repo holds only the writing. It is fully offline and needs no Python.
 
 Pipeline: markdown-it (markdown to HTML), Paged.js (pagination), Chromium's `printToPDF` through Electron (PDF),
 pdf.js (checker).
+
+## The app
+
+```bash
+npm run build && npm run app      # or: npm start
+```
+
+Open a book folder (File > Open Book Folder, or Open Recent). A folder is a book if it has a `book.yaml`; if it has
+none, the app offers to create one. The folder is watched: a chapter changed outside the app (by Claude Code, say)
+reloads silently, or, if you have unsaved edits, a banner asks Reload or Keep mine.
+
+- **Left panel:** Parts and chapters, the open chapter's H2/H3 outline, and a badge with its count of open notes.
+- **Reading view:** the chapter laid out exactly as it prints (same styles, same pagination rules). Read only; click a
+  block, or select text, then add a note. Blocks with notes get a thin rule on their left; notes are cards in the margin.
+- **Source view:** the markdown in CodeMirror, editable. Cmd/Ctrl+S saves; leaving a chapter or closing the window with
+  unsaved edits asks first.
+- **Print PDF:** saves, builds `build/<output>.pdf`, runs the checker, shows a report whose lines open the chapter
+  they belong to, then opens the PDF in your viewer.
+
+| Keys (Cmd on macOS, Ctrl elsewhere) | |
+| --- | --- |
+| `/` | switch Reading and Source |
+| `S` | save |
+| `Shift+M` | add a note to the selected block |
+| `\` | show or hide the left panel |
+| `F` | find in the chapter |
+| `[` and `]` | previous and next chapter |
+| `P` | print PDF |
+| `O` | open a book folder |
+
+**Notes** are kept in the markdown, one comment on its own line directly after the block: `<!-- Q: ... -->` a question,
+`<!-- E: ... -->` an edit request, `<!-- ? -->` confused, `<!-- A: ... -->` an answer written by Claude Code. The
+Obsidian forms (`%%Q: ...%%`, `%%?%%`) work the same. Adding, editing or removing a note changes only its own lines and
+never reformats anything else; files are written atomically. In the reading view pick Q, E or ? (press the letter), type,
+press Enter. An answer shows under its note; the check mark ("Mark read") removes the note and its answer.
+`CLAUDE.md` in the book repo tells Claude Code how to process them.
+
+**Safety.** The window is sandboxed, with context isolation, no Node, a strict content security policy and a narrow
+preload bridge (`app/shared/api.ts` lists every call). It loads only its own files, the shared styles and the prepared
+pages; the network is blocked outright. Links in the book open in your own browser.
 
 ## Layout
 
@@ -13,8 +53,8 @@ pdf.js (checker).
 core/       shared by the command line and the app
             config (book.yaml), mdrender (markdown), book (chapters, Parts), html, notes, check, lint,
             pdf (spawns Electron); browser/ holds the pagination rules that run inside the hidden window
-electron/   the hidden-window PDF process (and, from stage 2, the app)
-app/        the desktop app
+electron/   the hidden-window PDF renderer
+app/        the desktop app: main/ (windows, menu, files, print), preload/, renderer/ (the UI), shared/
 bin/        the `book-studio` command
 scripts/    build script
 styles/     book.css, paged.css and fonts/: the typography shared by the app view and the PDF

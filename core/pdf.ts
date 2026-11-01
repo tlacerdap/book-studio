@@ -9,7 +9,9 @@ import { outputPdf, type BookConfig } from "./config.ts";
 import { readChapters, selectChapters } from "./book.ts";
 import { buildHtml } from "./html.ts";
 import { PACKAGE_ROOT, STYLES } from "./paths.ts";
-import { readCss, resolvePageVars, styleFiles } from "./style.ts";
+import { forPaged, readCss, resolvePageVars, styleFiles } from "./style.ts";
+
+export { forPaged };
 
 export class BuildError extends Error {}
 
@@ -26,6 +28,8 @@ export interface BuildOptions {
   noRules?: boolean;
   /** Report where a piece of text ended up in the paginated page (developer aid). */
   timeoutMs?: number;
+  /** How the HTML becomes a PDF; the command line's default starts a headless Electron. */
+  render?: PdfRenderer;
 }
 
 export interface BuildResult {
@@ -33,18 +37,6 @@ export interface BuildResult {
   pages: number;
   chapters: number;
   html?: string;
-}
-
-/**
- * Chromium applies orphans, widows and break-inside itself when it fragments content, and Paged.js fragments content
- * into columns. Its own overflow detection assumes text flows on continuously, so Chromium's adjustments strand
- * blocks in the hidden overflow column. Hand the three properties to our own rules as custom properties instead.
- */
-export function forPaged(text: string): string {
-  return text
-    .replace(/(?<![\w-])orphans(\s*:)/g, "--pg-orphans$1")
-    .replace(/(?<![\w-])widows(\s*:)/g, "--pg-widows$1")
-    .replace(/(?<![\w-])break-inside(\s*:)/g, "--pg-break-inside$1");
 }
 
 const CSP = "default-src 'none'; script-src file:; style-src 'unsafe-inline' file:; font-src file: data:; img-src file: data:";
@@ -98,14 +90,37 @@ export async function buildPdf(book: BookConfig, opts: BuildOptions = {}): Promi
   const pdf = opts.out ? path.resolve(opts.out) : outputPdf(book);
   fs.mkdirSync(path.dirname(pdf), { recursive: true });
 
-  const args = [path.join(PACKAGE_ROOT, "dist", "electron", "pdf-main.cjs"), "--html", htmlFile, "--out", pdf, "--timeout", String(opts.timeoutMs ?? 600000)];
-  if (opts.log) args.push("--log");
-  if (opts.trace) args.push("--trace", "--log");
-  if (opts.noRules) args.push("--no-rules");
+  const job: PdfJob = { html: htmlFile, out: pdf, timeoutMs: opts.timeoutMs ?? 600000, log: opts.log, trace: opts.trace, noRules: opts.noRules };
+  let pages: number;
+  try {
+    pages = (await (opts.render ?? spawnRenderer)(job)).pages;
+  } finally {
+    fs.rmSync(work, { recursive: true, force: true });
+  }
+  return { pdf, pages, chapters: chapters.length, html: opts.htmlOut };
+}
+
+export interface PdfJob {
+  html: string;
+  out: string;
+  timeoutMs: number;
+  log?: boolean;
+  trace?: boolean;
+  noRules?: boolean;
+}
+
+/** Turns a prepared HTML file into a PDF. The command line starts a headless Electron; the app does it in-process. */
+export type PdfRenderer = (job: PdfJob) => Promise<{ pages: number }>;
+
+const spawnRenderer: PdfRenderer = async (job) => {
+  const args = [path.join(PACKAGE_ROOT, "dist", "electron", "pdf-main.cjs"), "--html", job.html, "--out", job.out, "--timeout", String(job.timeoutMs)];
+  if (job.log) args.push("--log");
+  if (job.trace) args.push("--trace", "--log");
+  if (job.noRules) args.push("--no-rules");
   const env = { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: "1" };
   delete (env as Record<string, string | undefined>).ELECTRON_RUN_AS_NODE;
   const result = await new Promise<{ ok: boolean; pages?: number; error?: string }>((resolve, reject) => {
-    const child = spawn(electronBinary(), process.platform === "linux" ? ["--no-sandbox", ...args] : args, { env, stdio: ["ignore", "pipe", opts.log || opts.trace ? "inherit" : "pipe"] });
+    const child = spawn(electronBinary(), process.platform === "linux" ? ["--no-sandbox", ...args] : args, { env, stdio: ["ignore", "pipe", job.log || job.trace ? "inherit" : "pipe"] });
     let stdout = "";
     child.stdout!.on("data", (d) => (stdout += d));
     child.on("error", reject);
@@ -115,7 +130,6 @@ export async function buildPdf(book: BookConfig, opts: BuildOptions = {}): Promi
       else resolve({ ok: false, error: `the print process exited with code ${code} and no result` });
     });
   });
-  fs.rmSync(work, { recursive: true, force: true });
   if (!result.ok) throw new BuildError(result.error ?? "the print process failed");
-  return { pdf, pages: result.pages ?? 0, chapters: chapters.length, html: opts.htmlOut };
-}
+  return { pages: result.pages ?? 0 };
+};

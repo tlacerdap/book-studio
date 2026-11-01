@@ -1,0 +1,15 @@
+/* Screen-only styling for the app's reading view. The pages themselves are styled by book.css and paged.css, exactly as in
+   the PDF; this only adds the desk they lie on and the marks for notes. Nothing here is used when printing. */
+html { background: #e9e7e3; }
+body { margin: 0; }
+.pagedjs_pages { display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 18px 0 40px; }
+.pagedjs_page { flex: none; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 0, 0, 0.1); }
+::selection { background: #cfd8e6; }
+
+/* A block with a note gets a thin rule in the margin to its left. No fill. */
+[data-src][data-note], [data-src][data-active] { position: relative; }
+[data-src][data-note]::before { content: ""; position: absolute; left: -11px; top: 0.15em; bottom: 0.15em; width: 1.5px; background: #1f1e1d; opacity: 0.55; }
+[data-src][data-note="open"]::before { opacity: 0.9; width: 2px; }
+[data-src][data-active]::before { content: ""; position: absolute; left: -11px; top: 0.15em; bottom: 0.15em; width: 2px; background: #1f1e1d; }
+[data-src] { cursor: text; }
+a { cursor: pointer; }
