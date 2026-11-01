@@ -50,9 +50,12 @@ export function placeNotes(text: string, blocks: BlockRange[]): { groups: NoteGr
 
 /** The line of the file a new note about block `src` goes after (the block's last line, in the file's own numbering). */
 export function insertAfterLine(text: string, src: string): number {
-  const { lineMap } = stripNotes(text);
-  const last = parseSrc(src).last;
-  return lineMap[Math.min(last, lineMap.length - 1)] ?? -1;
+  const { text: plain, lineMap } = stripNotes(text);
+  const lines = plain.split(/\r\n|\n|\r/);
+  let k = Math.min(parseSrc(src).last, lineMap.length - 1);
+  // A block's range can run on into the blank line after it (lists do); the note goes under its last line of text.
+  while (k > 0 && (lines[k] ?? "").trim() === "") k--;
+  return lineMap[k] ?? -1;
 }
 
 /** Headings of a chapter for the side panel's outline: H2 and H3 lines outside code, with their 0-based line in the file. */
@@ -78,4 +81,22 @@ export function blockStartingAt(text: string, blocks: BlockRange[], origLine: nu
   const { lineMap } = stripNotes(text);
   const k = lineMap.indexOf(origLine);
   return k < 0 ? null : blockForLine(blocks, k);
+}
+
+// A note can point at exact words. The words ride at the end of the note's text as `[on: "..."]`, so the file stays plain
+// markdown and Claude Code, which reads the comment, sees which words the reader meant.
+
+const QUOTE_MAX = 200;
+
+/** Add the quoted words to a note's text. Quotes inside the words become apostrophes, so the quote cannot end early. */
+export function withQuote(body: string, quote: string | null | undefined): string {
+  const q = (quote ?? "").replace(/\s+/g, " ").trim().replace(/"/g, "'").slice(0, QUOTE_MAX);
+  if (!q) return body.trim();
+  return `${body.trim()} [on: "${q}"]`.trim();
+}
+
+/** Split a note's text into what the reader wrote and the words it points at, if any. */
+export function splitQuote(text: string): { body: string; quote: string | null } {
+  const m = /\s*\[on: "([^\n]*)"\]\s*$/.exec(text);
+  return m ? { body: text.slice(0, m.index).trim(), quote: m[1] } : { body: text, quote: null };
 }

@@ -2,7 +2,7 @@
 //
 //   <!-- Q: text -->   a question: I don't understand something
 //   <!-- E: text -->   an edit request
-//   <!-- ? -->         this block confused me, no detail
+//   <!-- ? -->         this block confused me, no detail (it may carry words: <!-- ? [on: "..."] -->)
 //   <!-- A: text -->   an answer, written under the note it answers
 //
 // Obsidian forms are accepted too: %%Q: ...%%, %%E: ...%%, %%?%%, %%A: ...%%.
@@ -81,6 +81,9 @@ const KIND_RE = /^(Q|E|A)\s*:\s?(.*)$/s;
 function parseInner(inner: string): { kind: NoteKind; text: string } | null {
   const t = inner.trim();
   if (t === "?") return { kind: "?", text: "" };
+  // A "?" note may carry words too, such as the text it points at: `<!-- ? [on: "..."] -->`.
+  const q = /^\?\s+(\S[\s\S]*)$/.exec(t);
+  if (q) return { kind: "?", text: q[1].trim().replace(/\s*\n\s*/g, " ") };
   const m = KIND_RE.exec(t);
   if (!m) return null;
   return { kind: m[1] as NoteKind, text: m[2].trim().replace(/\s*\n\s*/g, " ") };
@@ -194,7 +197,7 @@ function render(kind: NoteKind, body: string, syntax: NoteSyntax): string {
   const safe = syntax === "html" ? clean.replace(/--(?=>)/g, "-​-").replace(/-->/g, "-- >") : clean.replace(/%%/g, "% %");
   // HTML comments get a space inside the delimiters; Obsidian's %% marks sit tight against the text.
   const pad = syntax === "html" ? " " : "";
-  if (kind === "?") return `${o}${pad}?${pad}${c}`;
+  if (kind === "?") return clean ? `${o}${pad}? ${safe}${pad}${c}` : `${o}${pad}?${pad}${c}`;
   return `${o}${pad}${kind}: ${safe}${pad}${c}`;
 }
 

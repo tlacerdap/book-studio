@@ -5,7 +5,7 @@
 // a note does not re-render anything.
 
 import { deleteNote, editNote, insertNote, stripNotes, type Note, type NoteKind, type NoteThread } from "../../core/notes.ts";
-import { blockStartingAt, insertAfterLine, parseSrc, placeNotes, type BlockRange, type NoteGroup } from "../../core/notemap.ts";
+import { blockStartingAt, insertAfterLine, parseSrc, placeNotes, splitQuote, withQuote, type BlockRange, type NoteGroup } from "../../core/notemap.ts";
 import { clear, h } from "./dom.ts";
 
 export interface ReadingHooks {
@@ -26,7 +26,7 @@ interface Block extends BlockRange {
   bottom: number;
 }
 
-type Editing = { kind: "new"; src: string | null } | { kind: "edit"; note: Note } | null;
+type Editing = { kind: "new"; src: string | null; quote: string | null; initial: NoteKind; reply: boolean } | { kind: "edit"; note: Note } | null;
 
 const KIND_NAME: Record<string, string> = { Q: "Question", E: "Change this", "?": "Lost me" };
 const KIND_KEY: Record<string, string> = { Q: "Q", E: "E", "?": "?" };
@@ -57,6 +57,8 @@ export class ReadingView {
   private blocks: Block[] = [];
   private active: string | null = null;
   private editing: Editing = null;
+  /** Words the reader has selected on the page, which a new note will point at. */
+  private selection: { src: string; text: string } | null = null;
   private ready = false;
   private findWaiter: ((r: { found: boolean; y: number }) => void) | null = null;
   private pendingScroll: number | null = null;
@@ -223,8 +225,13 @@ export class ReadingView {
         this.hooks.onError(String(m.message));
         break;
       case "click":
-      case "select":
+        this.selection = null;
         this.setActive((m.src as string | null) ?? null);
+        break;
+      case "select":
+        this.selection = m.src ? { src: String(m.src), text: String(m.text ?? "") } : null;
+        this.setActive((m.src as string | null) ?? null);
+        this.sendMarks();
         break;
       case "goto-chapter":
         this.hooks.onGotoChapter(String(m.id));
@@ -253,8 +260,19 @@ export class ReadingView {
   private sendMarks(): void {
     const { groups } = placeNotes(this.text, this.blocks);
     const notes: Record<string, "open" | "answered"> = {};
-    for (const g of groups) if (g.src) notes[g.src] = g.open ? "open" : "answered";
-    this.post({ type: "mark", notes, active: this.active });
+    const quotes: { src: string; text: string }[] = [];
+    for (const g of groups) {
+      if (!g.src) continue;
+      notes[g.src] = g.open ? "open" : "answered";
+      for (const t of g.threads) {
+        const q = splitQuote(t.note.text).quote;
+        if (q) quotes.push({ src: g.src, text: q });
+      }
+    }
+    // While a note is being written, the words it will point at are shown a little stronger.
+    const e = this.editing;
+    const pending = e?.kind === "new" && e.quote && e.src ? { src: e.src, text: e.quote } : this.selection;
+    this.post({ type: "mark", notes, active: this.active, quotes, pending });
   }
 
   // ---- notes ---------------------------------------------------------------------------------
@@ -269,7 +287,8 @@ export class ReadingView {
       if (!src) return this.hooks.onToast("There is nothing to attach a note to yet.");
       this.setActive(src);
     }
-    this.editing = { kind: "new", src };
+    const quote = this.selection && this.selection.src === src ? this.selection.text : null;
+    this.editing = { kind: "new", src, quote, initial: "Q", reply: false };
     this.drawNotes();
     this.notesCol.querySelector<HTMLElement>(".editor .picker button[aria-pressed='true']")?.focus();
     const b = this.blocks.find((x) => x.src === src);
@@ -283,6 +302,8 @@ export class ReadingView {
 
   private commit(newText: string): void {
     this.editing = null;
+    this.selection = null;
+    this.post({ type: "clear-selection" });
     this.text = newText;
     this.hooks.onTextChange(newText);
     this.drawNotes();
@@ -298,7 +319,7 @@ export class ReadingView {
     for (const g of groups) for (const t of g.threads) items.push({ y: topOf(g.src), order: 0, el: this.card(g, t) });
     const help = this.helpCard(groups);
     if (help) items.push({ y: 0, order: -1, el: help });
-    if (this.editing?.kind === "new") items.push({ y: topOf(this.editing.src), order: 1, el: this.composer(this.editing.src) });
+    if (this.editing?.kind === "new") items.push({ y: topOf(this.editing.src), order: 1, el: this.composer(this.editing) });
     items.sort((a, b) => a.y - b.y || a.order - b.order);
     for (const it of items) this.notesCol.append(it.el);
     this.layout(); // the page makes room for the margin only while there is something in it
@@ -393,15 +414,30 @@ export class ReadingView {
     return h("div", { class: "editor" }, pick, area, row);
   }
 
-  private composer(src: string | null): HTMLElement {
-    const card = h("div", { class: "card active k-Q" });
+  private composer(e: { src: string | null; quote: string | null; initial: NoteKind; reply: boolean }): HTMLElement {
+    const card = h("div", { class: `card active k-${e.initial}` });
+    let quote = e.quote;
+    const quoteLine = h("div", { class: "quote" });
+    const drawQuote = () => {
+      clear(quoteLine);
+      quoteLine.hidden = !quote;
+      if (!quote) return;
+      quoteLine.append(
+        h("span", {}, e.reply ? "About " : "On "),
+        h("q", {}, quote.length > 90 ? `${quote.slice(0, 90)}...` : quote),
+        h("button", { type: "button", title: "Do not point at these words", "aria-label": "Remove the quoted words", onClick: () => { quote = null; drawQuote(); if (this.editing?.kind === "new") this.editing.quote = null; this.sendMarks(); } }, "\u00d7"),
+      );
+    };
+    drawQuote();
     card.append(
+      h("div", { class: "title" }, e.reply ? "Reply to Claude" : "Note for Claude"),
+      quoteLine,
       this.editor({
-        kind: "Q",
+        kind: e.initial,
         text: "",
         onSave: (kind, text) => {
-          const at = src ? insertAfterLine(this.text, src) : -1;
-          this.commit(insertNote(this.text, at, kind, text));
+          const at = e.src ? insertAfterLine(this.text, e.src) : -1;
+          this.commit(insertNote(this.text, at, kind, withQuote(text, quote)));
         },
         onCancel: () => {
           this.editing = null;
@@ -416,13 +452,14 @@ export class ReadingView {
     const n = t.note;
     const editing = this.editing?.kind === "edit" && this.editing.note.start === n.start;
     const answered = t.answers.length > 0;
+    const { body, quote } = splitQuote(n.text);
     const card = h("div", { class: `card k-${n.kind}${answered ? " answered" : ""}${group.src && group.src === this.active ? " active" : ""}`, "data-line": n.start });
     if (editing) {
       card.append(
         this.editor({
           kind: n.kind,
-          text: n.text,
-          onSave: (kind, text) => this.commit(editNote(this.text, n, text, kind)),
+          text: body,
+          onSave: (kind, text) => this.commit(editNote(this.text, n, withQuote(text, quote), kind)),
           onCancel: () => {
             this.editing = null;
             this.drawNotes();
@@ -433,8 +470,9 @@ export class ReadingView {
       return card;
     }
     card.append(
-      h("div", { class: "text" }, h("span", { class: "kind" }, KIND_NAME[n.kind]), n.text || (n.kind === "?" ? "This lost me" : ""), answered ? null : h("span", { class: "open-dot", title: "Not processed yet" })),
+      h("div", { class: "text" }, h("span", { class: "kind" }, KIND_NAME[n.kind]), body || (n.kind === "?" ? "This lost me" : ""), answered ? null : h("span", { class: "open-dot", title: "Not processed yet" })),
     );
+    if (quote) card.append(h("div", { class: "quote" }, h("span", {}, "On "), h("q", {}, quote.length > 90 ? `${quote.slice(0, 90)}...` : quote)));
     for (const a of t.answers) {
       card.append(
         h(
@@ -442,7 +480,8 @@ export class ReadingView {
           { class: "answer" },
           h("span", { class: "a" }, "A"),
           h("span", { class: "body" }, a.text),
-          h("button", { type: "button", title: "Mark read: removes this note and its answer", "aria-label": "Mark read", onClick: (ev: Event) => { ev.stopPropagation(); this.commit(this.removeThread(t)); } }, "✓"),
+          h("button", { class: "reply", type: "button", title: "Answer Claude with a new note", onClick: (ev: Event) => { ev.stopPropagation(); this.reply(group.src, n, quote); } }, "Reply"),
+          h("button", { type: "button", title: "Mark read: removes this note and its answer", "aria-label": "Mark read", onClick: (ev: Event) => { ev.stopPropagation(); this.commit(this.removeThread(t)); } }, "✓ Read"),
         ),
       );
     }
@@ -457,6 +496,13 @@ export class ReadingView {
       this.notesCol.querySelector<HTMLElement>(".editor textarea")?.focus();
     });
     return card;
+  }
+
+  /** Answer Claude's answer: a new note under the old ones, which Claude Code finds as it finds any unanswered note. */
+  private reply(src: string | null, original: Note, quote: string | null): void {
+    this.editing = { kind: "new", src, quote, initial: original.kind === "?" ? "Q" : original.kind, reply: true };
+    this.drawNotes();
+    this.notesCol.querySelector<HTMLElement>(".editor .picker button[aria-pressed='true']")?.focus();
   }
 
   /** Remove a note and the answers under it, last line first so the line numbers stay right. */

@@ -43,7 +43,7 @@ reloads silently, or, if you have unsaved edits, a banner asks Reload or Keep mi
 `<!-- E: ... -->` an edit request, `<!-- ? -->` confused, `<!-- A: ... -->` an answer written by Claude Code. The
 Obsidian forms (`%%Q: ...%%`, `%%?%%`) work the same. Adding, editing or removing a note changes only its own lines and
 never reformats anything else; files are written atomically. In the reading view pick Question (Q), Change this (E) or Lost me (?), type,
-press Enter. The `?` button in the toolbar explains this and copies the command to give Claude Code (`process notes in chapter NN`). An answer shows under its note; the check mark ("Mark read") removes the note and its answer.
+press Enter. The `?` button in the toolbar explains this and copies the command to give Claude Code (`process notes in chapter NN`). Select exact words first and the note carries them as `[on: "..."]`, shown highlighted on the page, so Claude Code knows what to change. An answer shows under its note; **Reply** writes a follow-up note under it, and **Read** removes the note and its answer.
 `CLAUDE.md` in the book repo tells Claude Code how to process them.
 
 **Safety.** The window is sandboxed, with context isolation, no Node, a strict content security policy and a narrow

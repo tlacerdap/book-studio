@@ -13,3 +13,7 @@ body { margin: 0; }
 [data-src][data-active]::before { content: ""; position: absolute; left: -11px; top: 0.15em; bottom: 0.15em; width: 2px; background: #1f1e1d; }
 [data-src] { cursor: text; }
 a { cursor: pointer; }
+
+/* Words a note points at, and the words picked for a note being written. Screen only. */
+::highlight(note-quote) { background-color: rgba(255, 214, 102, 0.55); color: inherit; }
+::highlight(note-pending) { background-color: rgba(255, 214, 102, 0.85); color: inherit; }

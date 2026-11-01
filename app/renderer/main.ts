@@ -172,7 +172,7 @@ function toggleHelp(): void {
     "div",
     { id: "help-pop", role: "dialog", "aria-label": "How notes work" },
     h("h3", {}, "Notes for Claude"),
-    h("p", {}, "Click a paragraph, then press Add note. Choose what kind of note it is:"),
+    h("p", {}, "Select the exact words you mean (or just click a paragraph), then press Add note. The words you selected are highlighted and saved with the note, so Claude knows precisely what to change. Choose what kind of note it is:"),
     h(
       "ul",
       {},
@@ -182,7 +182,7 @@ function toggleHelp(): void {
     ),
     h("p", {}, "The note is written into this chapter's file, as a comment under the paragraph. It does not show in the book or the PDF. Claude Code finds it when you tell it:"),
     h("div", { class: "cmd" }, h("code", {}, cmd), h("button", { class: "tb-btn", type: "button", onClick: () => void api.copyText(cmd).then(() => toast("Copied. Paste it to Claude Code.")) }, "Copy")),
-    h("p", { class: "small" }, "Claude answers under each note. Click the check mark on an answer once you have read it to clear it."),
+    h("p", { class: "small" }, "Claude answers under each note. If its answer asks something or is not what you wanted, press Reply and write a new note, then give Claude Code the command again. When you are happy with an answer, press Read to clear the note."),
     h("button", { class: "tb-btn", type: "button", onClick: () => pop.remove() }, "Close"),
   );
   document.body.append(pop);

@@ -5,7 +5,7 @@
 type Block = { src: string; first: number; last: number; top: number; bottom: number; page: number };
 
 type ToFrame =
-  | { type: "mark"; notes: Record<string, "open" | "answered">; active: string | null }
+  | { type: "mark"; notes: Record<string, "open" | "answered">; active: string | null; quotes: { src: string; text: string }[]; pending: { src: string; text: string } | null }
   | { type: "scroll-to"; y: number }
   | { type: "find"; query: string; backwards: boolean }
   | { type: "clear-selection" };
@@ -56,6 +56,50 @@ function report(): void {
   });
 }
 
+/** Lowercase, plain quotes, single spaces: so words copied from the page are found whatever the typography. */
+function plain(t: string): string {
+  return t.replace(/[\u2018\u2019]/g, "'").replace(/[\u201c\u201d]/g, '"').replace(/\s+/g, " ").toLowerCase();
+}
+
+/** The range covering `needle` inside the blocks that carry `src` (a block split over pages is searched as one text). */
+function findRange(src: string, needle: string): Range | null {
+  const nodes: { node: Text; start: number }[] = [];
+  let all = "";
+  for (const el of document.querySelectorAll<HTMLElement>(`[data-src="${src}"]`)) {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const t = n as Text;
+      if (t.parentElement?.closest(".pg-hy, .ext-url")) continue;
+      nodes.push({ node: t, start: all.length });
+      all += t.data.replace(/\s+/g, " ");
+    }
+  }
+  const at = plain(all).indexOf(plain(needle).trim());
+  if (at < 0 || !needle.trim()) return null;
+  const end = at + plain(needle).trim().length;
+  const locate = (pos: number): { node: Text; offset: number } | null => {
+    for (let i = nodes.length - 1; i >= 0; i--) if (nodes[i].start <= pos) return { node: nodes[i].node, offset: Math.min(nodes[i].node.length, pos - nodes[i].start) };
+    return null;
+  };
+  const a = locate(at);
+  const b = locate(end - 1);
+  if (!a || !b) return null;
+  const r = document.createRange();
+  r.setStart(a.node, a.offset);
+  r.setEnd(b.node, Math.min(b.node.length, b.offset + 1));
+  return r;
+}
+
+function highlight(quotes: { src: string; text: string }[], pending: { src: string; text: string } | null): void {
+  const css = (window as unknown as { CSS?: { highlights?: Map<string, unknown> } }).CSS;
+  const HL = (window as unknown as { Highlight?: new (...r: Range[]) => unknown }).Highlight;
+  if (!css?.highlights || !HL) return;
+  const ranges = quotes.map((q) => findRange(q.src, q.text)).filter((r): r is Range => !!r);
+  css.highlights.set("note-quote", new HL(...ranges));
+  const p = pending ? findRange(pending.src, pending.text) : null;
+  css.highlights.set("note-pending", new HL(...(p ? [p] : [])));
+}
+
 function mark(notes: Record<string, "open" | "answered">, active: string | null): void {
   for (const el of document.querySelectorAll<HTMLElement>("[data-note], [data-active]")) {
     delete el.dataset.note;
@@ -71,7 +115,10 @@ function mark(notes: Record<string, "open" | "answered">, active: string | null)
 window.addEventListener("message", (e: MessageEvent) => {
   if (e.source !== parentWin) return;
   const m = e.data as ToFrame;
-  if (m.type === "mark") mark(m.notes, m.active);
+  if (m.type === "mark") {
+    mark(m.notes, m.active);
+    highlight(m.quotes ?? [], m.pending ?? null);
+  }
   else if (m.type === "scroll-to") window.scrollTo({ top: m.y });
   else if (m.type === "clear-selection") window.getSelection()?.removeAllRanges();
   else if (m.type === "find") {
