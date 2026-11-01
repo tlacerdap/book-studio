@@ -6,6 +6,42 @@ the writing.
 
 Pipeline: markdown-it-py (markdown to HTML), Jinja2 templates, WeasyPrint (layout and PDF). No browser.
 
+## TypeScript engine (in progress: Python stays until the output is approved)
+
+A second engine is being built to replace the Python one so the desktop app needs no Python and no native libraries.
+It lives in `core/` (shared by the command line and, later, the app) and uses Electron as its layout engine:
+markdown-it for HTML, Paged.js for pagination, Chromium's `printToPDF` for the PDF, and pdf.js for the checker.
+It reads the same `book.yaml` and the same `styles/book.css` (plus `styles/paged.css`, which only the TypeScript engine loads).
+
+```
+core/       config, markdown (mdrender), notes, book, html, check, lint, pdf (spawns Electron)
+            browser/  pagination rules that run inside the hidden window (Paged.js handler)
+electron/   the hidden-window PDF process
+bin/        the `book-studio` command (Node)
+tests/      vitest
+```
+
+Setup needs Node 22.12 or newer:
+
+```bash
+npm install            # Electron is downloaded here
+npm run build          # bundles dist/
+npm test               # 100 tests
+node bin/book-studio.js pdf   /path/to/book --check
+node bin/book-studio.js check /path/to/book
+node bin/book-studio.js lint  /path/to/book
+```
+
+Options match the Python command (`--chapters`, `--out`, `--html`, `--extra-css`, `--check`, `--samples`). Developer aids:
+`--trace` (log pagination decisions), `--no-rules` (Paged.js without the book's pagination rules).
+
+Differences from the Python engine that you can see in the PDF:
+
+- Contents page numbers are printed from labels computed by the driver, then verified by the checker against the PDF
+  bookmarks and the page footers (Paged.js's own page counters were not reliable). Every entry is verified.
+- Bookmarks list chapters and their H2/H3 headings; Chromium cannot make a separate bookmark for a Part.
+- External link addresses are real text (so they can wrap at slashes) rather than CSS generated content.
+
 ## Layout
 
 ```

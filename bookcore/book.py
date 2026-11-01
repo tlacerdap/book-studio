@@ -11,6 +11,7 @@ from markdown_it import MarkdownIt
 
 from .config import BookConfig
 from .mdrender import chapter_id, make_markdown
+from .notes import strip_notes
 from .paths import TEMPLATES
 
 ROMAN = ["0", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"]
@@ -101,7 +102,7 @@ def select_chapters(book: BookConfig, spec: list[str] | None) -> list[Path]:
 
 
 def load_chapter(path: Path, md: MarkdownIt) -> Chapter:
-    tokens = md.parse(path.read_text(encoding="utf-8"), {})
+    tokens = md.parse(strip_notes(path.read_text(encoding="utf-8")), {})
     h1 = next((i for i, t in enumerate(tokens) if t.type == "heading_open" and t.tag == "h1"), None)
     if h1 is None:
         raise ValueError(f"{path.name} has no `# ` title line")

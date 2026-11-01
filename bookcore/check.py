@@ -73,6 +73,8 @@ class Page:
     lines: list[Line]
     blocks: list[Block]
     label: str  # printed page number, "" if none
+    frames: list[tuple[float, float]] = field(default_factory=list)  # (top, bottom) of each code frame drawn on the page
+    rect_height: float = 842.0
 
 
 def classify(page: pymupdf.Page) -> list[Line]:
@@ -154,7 +156,12 @@ def load_pages(doc: pymupdf.Document) -> list[Page]:
             a, ln, b = lines[k - 1], lines[k], lines[k + 1]
             if ln.kind == "body" and a.kind == "code" and b.kind == "code" and abs(ln.size - S.code_size) < 0.8:
                 ln.kind = "code"
-        pages.append(Page(i, lines, make_blocks(lines), label))
+        frames = [
+            (d["rect"].y0, d["rect"].y1)
+            for d in p.get_drawings()
+            if d["rect"].width >= 200 and d["rect"].height >= 8
+        ]
+        pages.append(Page(i, lines, make_blocks(lines), label, frames, p.rect.height))
     return pages
 
 
@@ -267,6 +274,16 @@ def check_code_splits(pages: list[Page], min_code: int, short_limit: int) -> tup
             continue
         last, first = a.blocks[-1], b.blocks[0]
         if last.kind != "code" or first.kind != "code":
+            continue
+        # A real split runs to the bottom of one page and resumes at the top of the next. A frame that closes under the
+        # last line (or opens above the first) belongs to a separate block, such as a script and its output.
+        line_h = S.code_size * 1.5
+        last_line, first_line = last.lines[-1], first.lines[0]
+        if (a.rect_height - S.bottom_margin - last_line.y1 >= line_h * 2.2) or (first_line.y0 - S.top_margin >= line_h * 3):
+            continue
+        frame_a = next((f for f in a.frames if f[0] < last_line.y0 and f[1] > last_line.y1 - 1), None)
+        frame_b = next((f for f in b.frames if f[0] < first_line.y1 and f[1] > first_line.y0), None)
+        if (frame_a and frame_a[1] - last_line.y1 > 4) or (frame_b and first_line.y0 - frame_b[0] > 8):
             continue
         splits += 1
         n1, n2 = last.nlines, first.nlines

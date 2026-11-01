@@ -32,8 +32,8 @@ author: ""
 date: ""              # printed on the cover as written, for example "November 1, 2026"
 language: en          # sets hyphenation and the document language
 
-chapters: {chapters}  # glob for the chapter files; they are ordered by file name
-output: {output}      # the PDF is written to build/<output>.pdf
+chapters: "{chapters}"  # glob for the chapter files; they are ordered by file name
+output: {output_q}      # the PDF is written to build/<output>.pdf
 
 # index: INDEX.md     # optional. A markdown file whose "## Part X - Name" headings and
                       # "**Chapter N - Title**" lines group chapters into Parts in the contents.
@@ -123,7 +123,7 @@ def write_default_book_yaml(folder: str | Path, title: str | None = None) -> Pat
     text = TEMPLATE.format(
         title=json.dumps(title or root.name.replace("-", " ").replace("_", " ").title(), ensure_ascii=False),
         chapters="chapters/*.md" if has_dir else "*.md",
-        output=root.name,
+        output_q=json.dumps(root.name, ensure_ascii=False),
     )
     path.write_text(text, encoding="utf-8")
     return path

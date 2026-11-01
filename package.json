@@ -1,0 +1,35 @@
+{
+  "name": "book-studio",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Read, annotate and print a book written in markdown. Fully offline.",
+  "type": "module",
+  "bin": {
+    "book-studio": "bin/book-studio.js"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "electron": "45.2.1",
+    "highlight.js": "11.12.0",
+    "markdown-it": "15.0.3",
+    "markdown-it-footnote": "4.0.0",
+    "markdown-it-front-matter": "0.2.4",
+    "pagedjs": "0.4.3",
+    "pdfjs-dist": "5.6.205",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vitest": "4.1.12"
+  }
+}

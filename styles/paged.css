@@ -1,0 +1,55 @@
+/* Pagination rules that only the Paged.js engine needs. Layered after book.css. */
+
+/* ---- Page numbers ---------------------------------------------------------------------------------------
+   The driver gives every page an absolute counter value (nothing on the cover) and every contents entry a data-page
+   label; the footer and the contents just print them. Front matter prints its counter in roman. */
+@page front { @bottom-center { content: counter(page, lower-roman); } }
+
+/* ---- Contents: Paged.js has no leader(), so the dots are a clipped row of characters ---------------- */
+.toc-list a { display: flex; align-items: first baseline; }
+.toc-label { flex: none; display: block; align-self: first baseline; }
+.toc-text { flex: 0 1 auto; display: block; max-width: calc(100% - var(--toc-label-width) - var(--toc-number-width)); }
+.toc-leader { align-self: last baseline; flex: 1 1 0; min-width: 1.5em; overflow: hidden; white-space: nowrap; margin: 0 0.35em; color: var(--color-secondary); font-weight: 400; letter-spacing: 0; text-transform: none; }
+.toc-leader::after { content: ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . "; }
+.toc-list a::after { content: attr(data-page); flex: none; text-align: right; min-width: 2em; align-self: last baseline; }
+
+/* ---- Code: one block per source line, so a page break can only fall between lines ------------------- */
+pre .cl { display: block; white-space: pre-wrap; break-inside: avoid; }
+
+/* Paged.js lays a page out as a multi-column box and treats whatever lands in the second column as overflow. The
+   default `column-fill: balance` would spread content across both columns instead of filling the first. */
+.pagedjs_page_content { column-fill: auto; }
+
+/* Paged.js re-serialises the stylesheet with a parser that does not know `overflow-wrap: anywhere` and drops it, so a
+   long URL would not wrap at all. These older keywords survive. */
+.url, .ext-url { overflow-wrap: break-word; }
+/* The printed address of an external link is real text here (so it can wrap at slashes), not generated content. */
+a.ext::after { content: none; }
+.ext-url { font-family: var(--font-mono); font-size: var(--size-inline-code); hyphens: none; }
+code { overflow-wrap: break-word; }
+
+/* A Part row's title is taller than a chapter row's text: give the leader and number its line height so they share a baseline. */
+.toc-part .toc-leader, .toc-part a::after { line-height: var(--leading-h2); }
+
+/* Pagination is decided on screen and then printed. Fractional, unhinted glyph advances make the two agree on where
+   every line breaks. */
+html { text-rendering: geometricPrecision; }
+
+/* Paged.js sets each page area up as a multi-column box so that overflow drops into a second column. Our detection is
+   geometric and does not need that, and Chromium fragments such a box a second time when printing, which moved the
+   last lines of some pages out of sight. One plain column: overflow simply runs below the area and is cut off. */
+.pagedjs_page_content, .pagedjs_page_content > div { column-width: auto !important; columns: auto !important; column-count: auto !important; column-gap: 0 !important; }
+
+/* The hyphen added where a word is split across pages hangs past the end of the line and takes no width, so adding it
+   can never push the last word of a page onto a line of its own. */
+.pg-hy { display: inline-block; width: 0; overflow: visible; white-space: nowrap; }
+
+/* Chromium builds PDF bookmarks from the rendered text of each heading and drops the space where a heading wraps. Keeping
+   the wrap space (it hangs past the line end, so nothing moves) keeps bookmark titles intact. */
+h1, h2, h3, h4 { white-space: pre-wrap; }
+
+/* Monochrome syntax highlighting for highlight.js tokens: the same weight, slant and grey as the Pygments rules in book.css. */
+pre .hljs-keyword, pre .hljs-literal, pre .hljs-type, pre .hljs-meta, pre .hljs-tag, pre .hljs-name, pre .hljs-section { font-weight: 700; }
+pre .hljs-meta .hljs-string, pre .hljs-meta .hljs-keyword { font-weight: inherit; }
+pre .hljs-string, pre .hljs-regexp { color: var(--color-code-string); }
+pre .hljs-comment, pre .hljs-quote, pre .hljs-doc { color: var(--color-code-comment); font-style: italic; font-weight: 400; }
