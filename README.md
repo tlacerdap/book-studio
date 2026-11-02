@@ -267,3 +267,5 @@ lines of the kinds above.
 - Typographic quotes and ellipses are applied to text only. markdown-it's `replacements` rule is off
   on purpose: it would turn `--` and `---` into en and em dashes, and the book uses plain hyphens.
 - Footnotes print as a list at the end of the chapter.
+
+- A heading followed by an unsplittable element (a list item) too tall to share the page with it no longer ends up alone on a page: the element is split, between its inner items where it has them.

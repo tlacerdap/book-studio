@@ -138,15 +138,28 @@ function avoidBefore(leaf: Element, root: Element): boolean {
   return false;
 }
 
-/** The outermost ancestor of the position (inside `root`) that must not be split. */
-function avoidInsideAncestor(node: Node, root: Element): Element | null {
+/** The outermost ancestor of the position (inside `root`) that must not be split, leaving out those in `skip`. */
+function avoidInsideAncestor(node: Node, root: Element, skip?: Set<Element>): Element | null {
   let found: Element | null = null;
   let el: Node | null = node.nodeType === Node.ELEMENT_NODE ? node : node.parentNode;
   while (el && el !== root) {
-    if (el.nodeType === Node.ELEMENT_NODE && breakValue(el as Element, "breakInside") === "avoid") found = el as Element;
+    if (el.nodeType === Node.ELEMENT_NODE && breakValue(el as Element, "breakInside") === "avoid" && !skip?.has(el as Element)) found = el as Element;
     el = el.parentNode;
   }
   return found;
+}
+
+/**
+ * True when everything on the page before `el` is a chain of blocks that must stay with what follows (a heading, a
+ * lead-in sentence). Moving `el` to the next page would then drag the whole page along, and leave nothing here: the
+ * chain would only be stranded again on the next page. The element has to be split instead.
+ */
+function onlyChainBefore(el: Element, root: Element): boolean {
+  const leaves = leavesIn(root);
+  const first = leaves.findIndex((l) => el.contains(l));
+  if (first <= 0) return false;
+  for (let i = first - 1; i >= 0; i--) if (!(avoidAfter(leaves[i], root) || avoidBefore(leaves[i + 1], root))) return false;
+  return true;
 }
 
 /** The first non-blank text position at or after a boundary, inside `root`. */
@@ -221,16 +234,23 @@ export function adjustOverflow(overflow: Range, root: Element, bounds?: Bounds):
     moved = true;
   };
 
+  const unbreakableHere = new Set<Element>(); // elements that are allowed to split on this page, see onlyChainBefore
   for (let guard = 0; guard < 60; guard++) {
     const raw: Pos = { node: range.startContainer, offset: range.startOffset };
     const pos = textPosAfter(raw, root);
     if (!pos) break;
 
     // 1. break-inside: avoid. The element moves whole, unless it already starts the page (it is taller than a page).
-    const avoid = avoidInsideAncestor(pos.node, root);
+    const avoid = avoidInsideAncestor(pos.node, root, unbreakableHere);
     if (avoid && !atStartOf(avoid, pos)) {
       const before = startBefore(avoid, root);
       if (hasContentBefore(root, before)) {
+        // A heading alone on a page, with an element after it too tall to share the page: split the element (between
+        // its inner items where it has them) rather than leave the heading stranded.
+        if (onlyChainBefore(avoid, root)) {
+          unbreakableHere.add(avoid);
+          continue;
+        }
         setStart(before);
         continue;
       }

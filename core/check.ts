@@ -152,7 +152,8 @@ async function readPage(page: pdfjs.PDFPageProxy, index: number, S: StyleMetrics
     else if ((serif && size >= S.h2Size - 1.5) || (semibold && size >= S.h3Size - 0.5 && !mono)) kind = "heading";
     else kind = "body";
     const first = real[0];
-    const marker = /^\d+\.$/.test(first.it.str.trim()) && real.length > 1;
+    // A numbered item: its number is a run of its own, or part of the first run ("3. Why ...").
+    const marker = (/^\d+\.$/.test(first.it.str.trim()) && real.length > 1) || /^\d{1,2}\.\s+\S/.test(text);
     const dot = dots.some((d) => d.cx < x0 && x0 - d.cx < 40 && Math.abs(d.cy - (y - size * 0.3)) < size * 0.7);
     lines.push({ text, x0, x1, y, size, kind, bullet: dot || marker });
   }
