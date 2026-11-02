@@ -196,9 +196,15 @@ function toggleHelp(): void {
     h("p", {}, "The note is written into this chapter's file, as a comment under the paragraph. It does not show in the book or the PDF. Claude Code finds it when you tell it:"),
     h("div", { class: "cmd" }, h("code", {}, cmd), h("button", { class: "tb-btn", type: "button", onClick: () => void api.copyText(cmd).then(() => toast("Copied. Paste it to Claude Code.")) }, "Copy")),
     h("p", { class: "small" }, "Claude answers under each note. If its answer asks something or is not what you wanted, press Reply and write a new note, then give Claude Code the command again. When you are happy with an answer, press Read to clear the note."),
+    h("p", { class: "small" }, "In the box: press Q, E or ? to pick the kind, type, then Enter to save (Esc cancels)."),
+    h("p", { class: "small", id: "help-version" }),
     h("button", { class: "tb-btn", type: "button", onClick: () => pop.remove() }, "Close"),
   );
   document.body.append(pop);
+  void api.version().then((v) => {
+    const el = document.getElementById("help-version");
+    if (el) el.textContent = `Book Studio ${v}`;
+  });
 }
 
 function togglePanel(): void {
@@ -219,6 +225,7 @@ async function renderWelcome(message?: { text: string; folder?: string }): Promi
     h("h1", {}, "Book Studio"),
     message ? h("p", {}, message.text) : h("p", {}, "Read, annotate and print a book written in markdown. Open a folder that has a book.yaml."),
   );
+  void api.version().then((v) => inner.append(h("p", { class: "small" }, `Version ${v}`)));
   if (message?.folder) {
     const folder = message.folder;
     inner.append(
@@ -269,7 +276,11 @@ async function handleOpen(res: OpenResult): Promise<void> {
     if (first) await openChapter(first.path, { skipGuard: true });
     else await renderWelcome({ text: `${book.title} has no chapters yet. Add markdown files that match the \`chapters\` setting in book.yaml.` });
   } else if (res.reason === "not-a-book") {
-    await renderWelcome({ text: `${res.folder} is not a book yet: there is no book.yaml in it. Create one?`, folder: res.folder });
+    if (res.evidence > 0) {
+      await renderWelcome({ text: `${res.folder} has no book.yaml, but it holds ${res.evidence} chapter${res.evidence === 1 ? "" : "s"} (markdown files that start with a heading). Create the book.yaml for it?`, folder: res.folder });
+    } else {
+      await renderWelcome({ text: `${res.folder} does not look like a book: it has no book.yaml and no chapters. Open the folder that holds your book (the one with a chapters folder in it). Nothing was written.` });
+    }
   } else if (res.reason === "error") {
     toast(res.message);
   }

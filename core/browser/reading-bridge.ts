@@ -2,10 +2,11 @@
 // the app: it reports where each block of the chapter is, and what the reader clicks or selects; the app tells it which
 // blocks carry notes. Messages go to the parent window only, and only the parent's messages are accepted.
 
+type Quote = { src: string; text: string; done?: boolean };
 type Block = { src: string; first: number; last: number; top: number; bottom: number; page: number };
 
 type ToFrame =
-  | { type: "mark"; notes: Record<string, "open" | "answered">; active: string | null; quotes: { src: string; text: string }[]; pending: { src: string; text: string } | null }
+  | { type: "mark"; notes: Record<string, "open" | "answered">; active: string | null; quotes: Quote[]; wholes: { src: string; done: boolean }[]; pending: { src: string; text: string } | null }
   | { type: "scroll-to"; y: number }
   | { type: "find"; query: string; backwards: boolean }
   | { type: "clear-selection" };
@@ -90,14 +91,40 @@ function findRange(src: string, needle: string): Range | null {
   return r;
 }
 
-function highlight(quotes: { src: string; text: string }[], pending: { src: string; text: string } | null): void {
+/** Every fragment of a block (one per page it spans), as ranges over its text. */
+function wholeRanges(src: string): Range[] {
+  return Array.from(document.querySelectorAll<HTMLElement>(`[data-src="${src}"]`))
+    .filter((el) => !el.parentElement?.closest("[data-src]"))
+    .map((el) => {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      return r;
+    });
+}
+
+/**
+ * What the notes point at stays marked on the page for as long as the note exists: the exact words when the reader
+ * selected some, otherwise the whole block. Answered notes are marked more quietly than open ones.
+ */
+function highlight(quotes: Quote[], wholes: { src: string; done: boolean }[], pending: { src: string; text: string } | null): void {
   const css = (window as unknown as { CSS?: { highlights?: Map<string, unknown> } }).CSS;
-  const HL = (window as unknown as { Highlight?: new (...r: Range[]) => unknown }).Highlight;
+  const HL = (window as unknown as { Highlight?: new (...r: Range[]) => { priority: number } }).Highlight;
   if (!css?.highlights || !HL) return;
-  const ranges = quotes.map((q) => findRange(q.src, q.text)).filter((r): r is Range => !!r);
-  css.highlights.set("note-quote", new HL(...ranges));
+  const set = (name: string, priority: number, ranges: Range[]): void => {
+    const h = new HL(...ranges);
+    h.priority = priority;
+    css.highlights!.set(name, h);
+  };
+  const found = (list: Quote[]): Range[] => list.map((q) => findRange(q.src, q.text)).filter((r): r is Range => !!r);
+  // A note whose words can no longer be found (the text was edited) falls back to marking its block.
+  const lost = quotes.filter((q) => !findRange(q.src, q.text)).map((q) => ({ src: q.src, done: !!q.done }));
+  const blocks = [...wholes, ...lost];
+  set("note-block", 0, blocks.filter((b) => !b.done).flatMap((b) => wholeRanges(b.src)));
+  set("note-block-done", 0, blocks.filter((b) => b.done).flatMap((b) => wholeRanges(b.src)));
+  set("note-quote", 1, found(quotes.filter((q) => !q.done)));
+  set("note-quote-done", 1, found(quotes.filter((q) => q.done)));
   const p = pending ? findRange(pending.src, pending.text) : null;
-  css.highlights.set("note-pending", new HL(...(p ? [p] : [])));
+  set("note-pending", 2, p ? [p] : []);
 }
 
 function mark(notes: Record<string, "open" | "answered">, active: string | null): void {
@@ -117,7 +144,7 @@ window.addEventListener("message", (e: MessageEvent) => {
   const m = e.data as ToFrame;
   if (m.type === "mark") {
     mark(m.notes, m.active);
-    highlight(m.quotes ?? [], m.pending ?? null);
+    highlight(m.quotes ?? [], m.wholes ?? [], m.pending ?? null);
   }
   else if (m.type === "scroll-to") window.scrollTo({ top: m.y });
   else if (m.type === "clear-selection") window.getSelection()?.removeAllRanges();
@@ -134,10 +161,20 @@ document.addEventListener("mouseup", (e) => {
   const sel = window.getSelection();
   if (sel && !sel.isCollapsed && sel.toString().trim()) {
     const b = blockOf(sel.focusNode) ?? blockOf(sel.anchorNode);
-    if (b) return send({ type: "select", src: b.dataset.src, text: sel.toString().slice(0, 200) });
+    if (b) {
+      const rect = sel.getRangeAt(0).getClientRects()[0];
+      return send({ type: "select", src: b.dataset.src, text: sel.toString().slice(0, 200), y: rect ? rect.top + window.scrollY : e.clientY + window.scrollY });
+    }
   }
   const b = blockOf(e.target as Node);
-  send({ type: "click", src: b ? b.dataset.src : null });
+  send({ type: "click", src: b ? b.dataset.src : null, y: e.clientY + window.scrollY });
+});
+
+// The frame can hold the keyboard focus (after a click on the page). The keys that matter for writing a note are
+// passed to the app, which decides whether a note is being written; nothing else leaves the frame.
+document.addEventListener("keydown", (e) => {
+  if (e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key.length === 1 || e.key === "Escape" || e.key === "Enter") send({ type: "key", key: e.key, code: e.code, shift: e.shiftKey });
 });
 
 document.addEventListener("click", (e) => {

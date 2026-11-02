@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { ConfigError, isBook, loadBook, writeDefaultBookYaml } from "../core/config.ts";
+import { bookEvidence, ConfigError, isBook, loadBook, writeDefaultBookYaml } from "../core/config.ts";
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bs-config-"));
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
@@ -68,13 +68,42 @@ describe("book.yaml", () => {
   it("writes a starter book.yaml that loads", () => {
     const dir = path.join(tmp, "my-new_book");
     fs.mkdirSync(path.join(dir, "chapters"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "chapters", "01-a.md"), "# One\n\nText.\n");
     writeDefaultBookYaml(dir);
     expect(loadBook(dir)).toMatchObject({ title: "My New Book", chapters: "chapters/*.md", output: "my-new_book" });
     expect(() => writeDefaultBookYaml(dir)).toThrow(/already exists/);
     const flat = path.join(tmp, "flat");
     fs.mkdirSync(flat);
+    for (const f of ["01-a.md", "02-b.md"]) fs.writeFileSync(path.join(flat, f), "# Chapter\n");
     writeDefaultBookYaml(flat, 'A "quoted": title');
     expect(loadBook(flat)).toMatchObject({ title: 'A "quoted": title', chapters: "*.md" });
+  });
+
+  it("refuses to write a book.yaml where no book can be seen", () => {
+    const md = (dir: string, name: string, text: string) => {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, name), text);
+    };
+    const empty = path.join(tmp, "empty");
+    fs.mkdirSync(empty);
+    const readme = path.join(tmp, "readme-only");
+    md(readme, "README.md", "# A project\n");
+    const notes = path.join(tmp, "notes");
+    md(notes, "ideas.md", "# Ideas\n");
+    md(notes, "todo.md", "# Todo\n");
+    const noHeadings = path.join(tmp, "no-headings");
+    md(path.join(noHeadings, "chapters"), "01-a.md", "just words, no heading\n");
+    for (const dir of [empty, readme, notes, noHeadings]) {
+      expect(bookEvidence(dir)).toEqual([]);
+      expect(() => writeDefaultBookYaml(dir)).toThrow(/does not look like a book/);
+      expect(fs.existsSync(path.join(dir, "book.yaml"))).toBe(false);
+    }
+    const oneNumbered = path.join(tmp, "one-numbered");
+    md(oneNumbered, "01-a.md", "# One\n");
+    expect(bookEvidence(oneNumbered)).toEqual([]);
+    const real = path.join(tmp, "real");
+    md(path.join(real, "chapters"), "01-a.md", "---\ntitle: x\n---\n# One\n");
+    expect(bookEvidence(real)).toEqual(["chapters/01-a.md"]);
   });
 
   it("lists chapter files in file-name order", () => {

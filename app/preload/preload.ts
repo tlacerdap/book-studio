@@ -24,6 +24,7 @@ const api: StudioApi = {
   prepareReading: (file, text) => call("reading:prepare", file, text),
   openExternal: (url) => call("external:open", url),
   copyText: (text) => call("clipboard:write", text),
+  version: () => call("app:version"),
   pageCounts: () => call("pages:get"),
   pagesKnown: (file, pages) => call("pages:known", file, pages),
   print: () => call("print:run"),

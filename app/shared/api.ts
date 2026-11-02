@@ -15,7 +15,8 @@ export interface BookInfo {
 export type OpenResult =
   | { ok: true; book: BookInfo }
   | { ok: false; reason: "cancelled" }
-  | { ok: false; reason: "not-a-book"; folder: string }
+  /** `evidence` is how many chapters were found: only a folder that shows some can be turned into a book. */
+  | { ok: false; reason: "not-a-book"; folder: string; evidence: number }
   | { ok: false; reason: "error"; message: string };
 
 export interface ChapterText {
@@ -72,6 +73,8 @@ export interface StudioApi {
   prepareReading(file: string, text: string): Promise<{ url: string }>;
   openExternal(url: string): Promise<void>;
   copyText(text: string): Promise<void>;
+  /** The version of the app that is running, so a reader can tell which build they have. */
+  version(): Promise<string>;
   pageCounts(): Promise<PageCounts>;
   pagesKnown(file: string, pages: number): Promise<void>;
   print(): Promise<PrintOutcome>;

@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
-import { chapterFiles, ConfigError, isBook, loadBook, outputPdf, writeDefaultBookYaml, type BookConfig } from "../../core/config.ts";
+import { bookEvidence, chapterFiles, ConfigError, isBook, loadBook, outputPdf, writeDefaultBookYaml, type BookConfig } from "../../core/config.ts";
 import { listChapters } from "../../core/book.ts";
 import { atomicWrite } from "../../core/fsutil.ts";
 import { locateProblems, printBook } from "../../core/print.ts";
@@ -177,7 +177,7 @@ function openBook(folder: string): OpenResult {
     return { ok: true, book: bookInfo(b) };
   } catch (e) {
     if (e instanceof ConfigError && !fs.existsSync(path.join(path.resolve(folder), "book.yaml")) && fs.existsSync(folder) && fs.statSync(folder).isDirectory()) {
-      return { ok: false, reason: "not-a-book", folder: path.resolve(folder) };
+      return { ok: false, reason: "not-a-book", folder: path.resolve(folder), evidence: bookEvidence(folder).length };
     }
     return { ok: false, reason: "error", message: (e as Error).message };
   }
@@ -296,6 +296,7 @@ function registerIpc(): void {
   handle("external:open", async (url: string) => {
     if (/^https?:\/\//i.test(String(url))) await shell.openExternal(String(url));
   });
+  handle("app:version", () => app.getVersion());
   handle("clipboard:write", (text: string) => clipboard.writeText(String(text).slice(0, 2000)));
   handle("pages:get", (): PageCounts => counter?.state() ?? { counts: {}, pending: 0, chapters: 0 });
   handle("pages:known", (file: string, pages: number) => {

@@ -6,7 +6,7 @@ body { margin: 0; }
 .pagedjs_page { flex: none; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 0, 0, 0.1); }
 ::selection { background: #cfd8e6; }
 
-/* A block with a note gets a thin rule in the margin to its left. No fill. */
+/* A block with a note gets a thin rule in the margin to its left (and its text stays marked, see the highlights below). */
 [data-src][data-note], [data-src][data-active] { position: relative; }
 [data-src][data-note]::before { content: ""; position: absolute; left: -11px; top: 0.15em; bottom: 0.15em; width: 1.5px; background: #1f1e1d; opacity: 0.55; }
 [data-src][data-note="open"]::before { opacity: 0.9; width: 2px; }
@@ -15,5 +15,8 @@ body { margin: 0; }
 a { cursor: pointer; }
 
 /* Words a note points at, and the words picked for a note being written. Screen only. */
-::highlight(note-quote) { background-color: rgba(255, 214, 102, 0.55); color: inherit; }
+::highlight(note-block) { background-color: rgba(255, 214, 102, 0.32); color: inherit; }
+::highlight(note-block-done) { background-color: rgba(120, 170, 130, 0.22); color: inherit; }
+::highlight(note-quote-done) { background-color: rgba(120, 170, 130, 0.45); color: inherit; }
+::highlight(note-quote) { background-color: rgba(255, 214, 102, 0.6); color: inherit; }
 ::highlight(note-pending) { background-color: rgba(255, 214, 102, 0.85); color: inherit; }

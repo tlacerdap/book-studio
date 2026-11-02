@@ -13,8 +13,9 @@ pdf.js (checker).
 npm run build && npm run app      # or: npm start
 ```
 
-Open a book folder (File > Open Book Folder, or Open Recent). A folder is a book if it has a `book.yaml`; if it has
-none, the app offers to create one. The folder is watched: a chapter changed outside the app (by Claude Code, say)
+Open a book folder (File > Open Book Folder, or Open Recent). A folder is a book if it has a `book.yaml`. If it has
+none, the app offers to create one only when the folder visibly holds a book (a `chapters` folder with markdown files
+that start with a heading, or at least two numbered ones like `01-intro.md`); otherwise it writes nothing and says so. The folder is watched: a chapter changed outside the app (by Claude Code, say)
 reloads silently, or, if you have unsaved edits, a banner asks Reload or Keep mine.
 
 - **Left panel:** Parts and chapters, the open chapter's H2/H3 outline, a badge with its count of open notes, and how long the book is: pages per chapter and a total. The count comes from laying every chapter out quietly in the background (about 20 seconds the first time, remembered after that) and matches the numbered pages of the PDF; the PDF also has a cover and the contents.
@@ -43,7 +44,7 @@ reloads silently, or, if you have unsaved edits, a banner asks Reload or Keep mi
 `<!-- E: ... -->` an edit request, `<!-- ? -->` confused, `<!-- A: ... -->` an answer written by Claude Code. The
 Obsidian forms (`%%Q: ...%%`, `%%?%%`) work the same. Adding, editing or removing a note changes only its own lines and
 never reformats anything else; files are written atomically. In the reading view pick Question (Q), Change this (E) or Lost me (?), type,
-press Enter. The `?` button in the toolbar explains this and copies the command to give Claude Code (`process notes in chapter NN`). Select exact words first and the note carries them as `[on: "..."]`, shown highlighted on the page, so Claude Code knows what to change. An answer shows under its note; **Reply** writes a follow-up note under it, and **Read** removes the note and its answer.
+press Enter. The keys Q, E and ? (capital or not) pick the kind even while the page has the keyboard; while typing, Ctrl or Cmd with 1, 2, 3 does the same. The box opens next to the words you selected (or the place you clicked), keeps what you typed if the window is redrawn, and the words or block a note is about stay highlighted until you press Read. The `?` button in the toolbar explains this and copies the command to give Claude Code (`process notes in chapter NN`). Select exact words first and the note carries them as `[on: "..."]`, shown highlighted on the page, so Claude Code knows what to change. An answer shows under its note; **Reply** writes a follow-up note under it, and **Read** removes the note and its answer.
 `CLAUDE.md` in the book repo tells Claude Code how to process them.
 
 **Safety.** The window is sandboxed, with context isolation, no Node, a strict content security policy and a narrow
@@ -51,6 +52,10 @@ preload bridge (`app/shared/api.ts` lists every call). It loads only its own fil
 pages; the network is blocked outright. Links in the book open in your own browser.
 
 ## Installers
+
+Every build that is handed out has its own version (`npm version patch --no-git-tag-version`, or `minor` for features), so
+the installed copy can always be told apart from the one before: the version is in the `?` popover, on the welcome screen
+and in the About box.
 
 | System | File | Built with |
 | --- | --- | --- |

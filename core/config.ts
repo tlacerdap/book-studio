@@ -111,8 +111,45 @@ output: ${JSON.stringify(output)}      # the PDF is written to build/<output>.pd
 `;
 
 /** Create a starter book.yaml in a folder that does not have one (the app offers this). */
+/**
+ * What proves a folder holds a book: markdown files that start with a heading, either in a `chapters` folder or, failing
+ * that, at least two numbered files (01-intro.md) in the folder itself. A README alone, or a folder of loose notes, is
+ * not proof. Returns the evidence (relative file names), empty when there is none.
+ */
+export function bookEvidence(folder: string): string[] {
+  const root = path.resolve(folder);
+  const startsWithHeading = (file: string): boolean => {
+    try {
+      const head = fs.readFileSync(file, "utf8").slice(0, 4000).replace(/^\uFEFF/, "").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "");
+      return /^\s*#{1,2} \S/.test(head);
+    } catch {
+      return false;
+    }
+  };
+  const mdIn = (dir: string, numbered: boolean): string[] => {
+    try {
+      return fs
+        .readdirSync(dir, { withFileTypes: true })
+        .filter((d) => d.isFile() && d.name.endsWith(".md") && (!numbered || /^\d/.test(d.name)))
+        .map((d) => d.name)
+        .filter((n) => startsWithHeading(path.join(dir, n)))
+        .sort(byCodePoint);
+    } catch {
+      return [];
+    }
+  };
+  const inChapters = mdIn(path.join(root, "chapters"), false).map((n) => `chapters/${n}`);
+  if (inChapters.length > 0) return inChapters;
+  const flat = mdIn(root, true);
+  return flat.length >= 2 ? flat : [];
+}
+
+/** Write a starter book.yaml, but only into a folder that visibly holds a book. */
 export function writeDefaultBookYaml(folder: string, title?: string): string {
   const root = path.resolve(folder);
+  if (bookEvidence(root).length === 0 && !fs.existsSync(path.join(root, BOOK_FILE))) {
+    throw new ConfigError(`${root} does not look like a book: there are no chapters in it (markdown files that start with a heading), so no book.yaml was written.`);
+  }
   const file = path.join(root, BOOK_FILE);
   if (fs.existsSync(file)) throw new ConfigError(`${file} already exists.`);
   const name = path.basename(root);

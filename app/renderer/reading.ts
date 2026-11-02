@@ -28,7 +28,27 @@ interface Block extends BlockRange {
   bottom: number;
 }
 
-type Editing = { kind: "new"; src: string | null; quote: string | null; initial: NoteKind; reply: boolean } | { kind: "edit"; note: Note } | null;
+/** `y` is where on the page the reader clicked or selected (page units), so the box opens next to those words. */
+type Editing = { kind: "new"; src: string | null; quote: string | null; initial: NoteKind; reply: boolean; y: number | null } | { kind: "edit"; note: Note } | null;
+
+/** What a note box was holding when it had to be redrawn, so nothing typed is lost. */
+interface Draft {
+  /** The note box this belongs to: a different box starts empty. */
+  owner: object;
+  kind: NoteKind;
+  text: string;
+  focus: "text" | "picker" | null;
+  at: number;
+}
+
+/** Q, E and ? (capital or not, on any keyboard layout) choose the kind of a note. */
+function kindOfKey(key: string, code: string, shift: boolean): NoteKind | null {
+  const k = key.toLowerCase();
+  if (k === "q" || code === "KeyQ") return "Q";
+  if (k === "e" || code === "KeyE") return "E";
+  if (key === "?" || ((code === "Slash" || code === "IntlRo") && shift)) return "?";
+  return null;
+}
 
 const KIND_NAME: Record<string, string> = { Q: "Question", E: "Change this", "?": "Lost me" };
 const KIND_KEY: Record<string, string> = { Q: "Q", E: "E", "?": "?" };
@@ -60,7 +80,13 @@ export class ReadingView {
   private active: string | null = null;
   private editing: Editing = null;
   /** Words the reader has selected on the page, which a new note will point at. */
-  private selection: { src: string; text: string } | null = null;
+  private selection: { src: string; text: string; y: number } | null = null;
+  /** Where the reader last clicked on the page, with the block it was in. */
+  private clickAt: { src: string | null; y: number } | null = null;
+  private draft: Draft | null = null;
+  /** The note box that is on screen right now, if any: how the page's keys reach it. */
+  private liveEditing: Editing = null;
+  private liveBox: { choose(k: NoteKind): void; cancel(): void } | null = null;
   private ready = false;
   private findWaiter: ((r: { found: boolean; y: number }) => void) | null = null;
   private pendingScroll: number | null = null;
@@ -69,6 +95,8 @@ export class ReadingView {
   private zoom = 1;
   private fit = false;
   private docHeight = 400;
+  /** How far down the lowest note card reaches, so the page can be made long enough for it. */
+  private notesBottom = 0;
   private resizer: ResizeObserver;
 
   constructor(
@@ -199,7 +227,7 @@ export class ReadingView {
     this.frame.style.transform = `scale(${z})`;
     this.notesCol.style.cssText = `left:${left + w + 12}px;width:${NOTES_WIDTH}px;height:${h}px`;
     this.wrap.style.transition = this.notesCol.style.transition = "left 0.15s";
-    this.stage.style.cssText = `width:${Math.max(room, left + w + needRight + 12)}px;height:${h + 8}px`;
+    this.stage.style.cssText = `width:${Math.max(room, left + w + needRight + 12)}px;height:${Math.max(h + 8, this.notesBottom + 24)}px`;
     this.loading.style.zIndex = "3";
   }
 
@@ -229,13 +257,24 @@ export class ReadingView {
         break;
       case "click":
         this.selection = null;
+        this.clickAt = { src: (m.src as string | null) ?? null, y: Number(m.y) };
         this.setActive((m.src as string | null) ?? null);
         break;
       case "select":
-        this.selection = m.src ? { src: String(m.src), text: String(m.text ?? "") } : null;
+        this.selection = m.src ? { src: String(m.src), text: String(m.text ?? ""), y: Number(m.y) } : null;
+        this.clickAt = m.src ? { src: String(m.src), y: Number(m.y) } : null;
         this.setActive((m.src as string | null) ?? null);
         this.sendMarks();
         break;
+      case "key": {
+        // The page kept the keyboard focus (the reader clicked on it): its Q, E, ? and Esc still reach an open note box.
+        const box = this.liveBox;
+        if (!box) break;
+        if (m.key === "Escape") return box.cancel();
+        const k = kindOfKey(String(m.key), String(m.code), !!m.shift);
+        if (k) box.choose(k);
+        break;
+      }
       case "goto-chapter":
         this.hooks.onGotoChapter(String(m.id));
         break;
@@ -263,19 +302,22 @@ export class ReadingView {
   private sendMarks(): void {
     const { groups } = placeNotes(this.text, this.blocks);
     const notes: Record<string, "open" | "answered"> = {};
-    const quotes: { src: string; text: string }[] = [];
+    const quotes: { src: string; text: string; done: boolean }[] = [];
+    const wholes: { src: string; done: boolean }[] = [];
     for (const g of groups) {
       if (!g.src) continue;
       notes[g.src] = g.open ? "open" : "answered";
       for (const t of g.threads) {
         const q = splitQuote(t.note.text).quote;
-        if (q) quotes.push({ src: g.src, text: q });
+        const done = t.answers.length > 0;
+        if (q) quotes.push({ src: g.src, text: q, done });
+        else wholes.push({ src: g.src, done });
       }
     }
     // While a note is being written, the words it will point at are shown a little stronger.
     const e = this.editing;
     const pending = e?.kind === "new" && e.quote && e.src ? { src: e.src, text: e.quote } : this.selection;
-    this.post({ type: "mark", notes, active: this.active, quotes, pending });
+    this.post({ type: "mark", notes, active: this.active, quotes, wholes, pending });
   }
 
   // ---- notes ---------------------------------------------------------------------------------
@@ -291,11 +333,30 @@ export class ReadingView {
       this.setActive(src);
     }
     const quote = this.selection && this.selection.src === src ? this.selection.text : null;
-    this.editing = { kind: "new", src, quote, initial: "Q", reply: false };
+    // The box opens beside the words the reader picked, or the place they clicked, not at the top of a long block.
+    const y = this.selection && this.selection.src === src ? this.selection.y : this.clickAt && this.clickAt.src === src ? this.clickAt.y : null;
+    this.editing = { kind: "new", src, quote, initial: "Q", reply: false, y };
+    this.draft = null;
     this.drawNotes();
+    this.focusBox();
+    this.revealBox();
+  }
+
+  /** Put the keyboard in the note box (on the kind buttons, so Q, E and ? work at once), even if the page had it. */
+  private focusBox(): void {
     this.notesCol.querySelector<HTMLElement>(".editor .picker button[aria-pressed='true']")?.focus();
-    const b = this.blocks.find((x) => x.src === src);
-    if (b) this.ensureVisible(b.top * this.zoom);
+  }
+
+  /** Scroll just enough that the whole note box can be seen. */
+  private revealBox(): void {
+    const box = this.notesCol.querySelector<HTMLElement>(".card.composing, .card.editing");
+    if (!box) return;
+    const top = box.offsetTop;
+    const bottom = top + box.offsetHeight;
+    const view = this.scroller.scrollTop;
+    const height = this.scroller.clientHeight;
+    if (top < view + 16) this.scroller.scrollTop = Math.max(0, top - 80);
+    else if (bottom > view + height - 16) this.scroller.scrollTop = Math.max(0, Math.min(top - 80, bottom - height + 24));
   }
 
   private ensureVisible(y: number): void {
@@ -305,6 +366,7 @@ export class ReadingView {
 
   private commit(newText: string): void {
     this.editing = null;
+    this.draft = null;
     this.selection = null;
     this.post({ type: "clear-selection" });
     this.text = newText;
@@ -314,25 +376,92 @@ export class ReadingView {
 
   private drawNotes(): void {
     if (!this.ready) return;
+    this.captureDraft();
     clear(this.notesCol);
+    this.liveBox = null;
+    this.liveEditing = this.editing;
     const { groups } = placeNotes(this.text, this.blocks);
-    const items: { y: number; order: number; el: HTMLElement }[] = [];
+    const items: { y: number; order: number; el: HTMLElement; box?: boolean }[] = [];
     const z = this.zoom;
     const topOf = (src: string | null): number => (src ? (this.blocks.find((b) => b.src === src)?.top ?? 0) * z : 24);
     for (const g of groups) for (const t of g.threads) items.push({ y: topOf(g.src), order: 0, el: this.card(g, t) });
     const help = this.helpCard(groups);
     if (help) items.push({ y: 0, order: -1, el: help });
-    if (this.editing?.kind === "new") items.push({ y: topOf(this.editing.src), order: 1, el: this.composer(this.editing) });
+    if (this.editing?.kind === "new") items.push({ y: this.boxY(this.editing), order: 1, el: this.composer(this.editing), box: true });
     items.sort((a, b) => a.y - b.y || a.order - b.order);
     for (const it of items) this.notesCol.append(it.el);
     this.layout(); // the page makes room for the margin only while there is something in it
-    // Cards sit next to their block; when two would overlap, the later one moves down.
+    // Cards sit next to their block. The box being written in stays where the words are; the other cards make room
+    // for it, those above it moving up and those below it moving down.
+    const gap = 8;
+    const at = items.findIndex((i) => i.box);
     let floor = 0;
-    for (const it of items) {
-      it.el.style.top = `${Math.max(it.y, floor)}px`;
-      floor = Math.max(it.y, floor) + it.el.offsetHeight + 8;
+    if (at >= 0) {
+      let top = Math.max(0, items[at].y);
+      let ceiling = top - gap;
+      const above: [HTMLElement, number][] = [];
+      for (let i = at - 1; i >= 0; i--) {
+        const t = Math.min(items[i].y, ceiling - items[i].el.offsetHeight);
+        above.push([items[i].el, t]);
+        ceiling = t - gap;
+      }
+      const lift = Math.max(0, -ceiling - gap); // when the stack would leave the top of the page, everything moves down together
+      top += lift;
+      for (const [el, t] of above) el.style.top = `${t + lift}px`;
+      items[at].el.style.top = `${top}px`;
+      floor = top + items[at].el.offsetHeight + gap;
+      for (let i = at + 1; i < items.length; i++) {
+        const t = Math.max(items[i].y, floor);
+        items[i].el.style.top = `${t}px`;
+        floor = t + items[i].el.offsetHeight + gap;
+      }
+    } else {
+      for (const it of items) {
+        it.el.style.top = `${Math.max(it.y, floor)}px`;
+        floor = Math.max(it.y, floor) + it.el.offsetHeight + gap;
+      }
     }
+    // The page grows to hold a card that hangs below its end.
+    this.notesBottom = Math.max(...items.map((i) => i.el.offsetTop + i.el.offsetHeight), 0);
+    this.layout();
+    if (!this.editing) this.draft = null;
+    this.restoreFocus();
     this.sendMarks();
+  }
+
+  /** Where a new note box wants to be: level with the words the reader picked, inside their block. */
+  private boxY(e: { src: string | null; y: number | null }): number {
+    const b = e.src ? this.blocks.find((x) => x.src === e.src) : null;
+    if (!b) return 24 * this.zoom;
+    const page = e.y === null ? b.top : Math.min(Math.max(e.y, b.top), Math.max(b.top, b.bottom - 24));
+    return Math.max(0, (page - 6) * this.zoom);
+  }
+
+  /** Remember what is typed in the open note box before the margin is redrawn. */
+  private captureDraft(): void {
+    const area = this.notesCol.querySelector<HTMLTextAreaElement>(".editor textarea");
+    if (!area || !this.editing || this.editing !== this.liveEditing) return;
+    const pressed = this.notesCol.querySelector<HTMLElement>(".editor .picker button[aria-pressed='true']");
+    const active = document.activeElement;
+    this.draft = {
+      owner: this.editing,
+      kind: (pressed?.dataset.kind as NoteKind | undefined) ?? "Q",
+      text: area.value,
+      focus: active === area ? "text" : active && this.notesCol.contains(active) ? "picker" : null,
+      at: area.selectionStart ?? area.value.length,
+    };
+  }
+
+  private restoreFocus(): void {
+    const d = this.draft;
+    if (!d || d.owner !== this.editing || !d.focus) return;
+    const area = this.notesCol.querySelector<HTMLTextAreaElement>(".editor textarea");
+    if (d.focus === "text" && area) {
+      area.focus({ preventScroll: true });
+      area.setSelectionRange(d.at, d.at);
+    } else if (d.focus === "picker") {
+      this.notesCol.querySelector<HTMLElement>(".editor .picker button[aria-pressed='true']")?.focus({ preventScroll: true });
+    }
   }
 
   /** The command to give Claude Code for this chapter: the leading digits of the file name are its chapter number. */
@@ -357,32 +486,25 @@ export class ReadingView {
     return null;
   }
 
-  private picker(initial: NoteKind, onPick: (k: NoteKind) => void, onChosen: () => void): HTMLElement {
+  private picker(initial: NoteKind, onPick: (k: NoteKind) => void): { el: HTMLElement; select(k: NoteKind): void } {
     const kinds: NoteKind[] = ["Q", "E", "?"];
     const wrap = h("div", { class: "picker", role: "group", "aria-label": "Kind of note" });
     const buttons = kinds.map((k) =>
-      h("button", { type: "button", title: KIND_HELP[k], "aria-pressed": String(k === initial), onClick: () => select(k) }, h("b", {}, KIND_KEY[k]), ` ${KIND_NAME[k]}`),
+      h("button", { type: "button", "data-kind": k, title: KIND_HELP[k], "aria-pressed": String(k === initial), onClick: () => select(k) }, h("b", {}, KIND_KEY[k]), ` ${KIND_NAME[k]}`),
     );
     const select = (k: NoteKind) => {
       buttons.forEach((b, i) => b.setAttribute("aria-pressed", String(kinds[i] === k)));
       onPick(k);
     };
-    wrap.addEventListener("keydown", (e) => {
-      const k = e.key === "q" || e.key === "Q" ? "Q" : e.key === "e" || e.key === "E" ? "E" : e.key === "?" ? "?" : null;
-      if (k && !e.metaKey && !e.ctrlKey) {
-        e.preventDefault();
-        select(k);
-        onChosen();
-      }
-    });
     wrap.append(...buttons);
-    return wrap;
+    return { el: wrap, select };
   }
 
   private editor(opts: { kind: NoteKind; text: string; onSave(kind: NoteKind, text: string): void; onCancel(): void; onDelete?: () => void }): HTMLElement {
-    let kind = opts.kind;
+    const d = this.draft && this.draft.owner === this.editing ? this.draft : null;
+    let kind = d ? d.kind : opts.kind;
     const area = h("textarea", { rows: 2, placeholder: PLACEHOLDER[kind], "aria-label": "Note text" });
-    area.value = opts.text;
+    area.value = d ? d.text : opts.text;
     const save = () => {
       const text = area.value.trim();
       if (kind !== "?" && !text) return area.focus();
@@ -391,7 +513,12 @@ export class ReadingView {
     const pick = this.picker(kind, (k) => {
       kind = k;
       area.placeholder = PLACEHOLDER[k];
-    }, () => area.focus());
+    });
+    const choose = (k: NoteKind) => {
+      pick.select(k);
+      area.focus();
+    };
+    this.liveBox = { choose, cancel: () => opts.onCancel() };
     area.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
         e.preventDefault();
@@ -399,26 +526,47 @@ export class ReadingView {
       } else if (e.key === "Escape") {
         e.preventDefault();
         opts.onCancel();
+      } else if ((e.metaKey || e.ctrlKey) && !e.altKey && ["1", "2", "3"].includes(e.key)) {
+        // While typing, Ctrl or Cmd with 1, 2 or 3 changes the kind without leaving the text.
+        e.preventDefault();
+        pick.select((["Q", "E", "?"] as NoteKind[])[Number(e.key) - 1]);
       }
     });
-    pick.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") opts.onCancel();
-      else if (e.key === "Enter") {
+    // Anywhere in the box but the text itself, Q, E and ? choose the kind (capital or small, on any keyboard).
+    const root = h("div", { class: "editor" });
+    root.addEventListener("keydown", (e) => {
+      if (e.target === area || e.isComposing) return;
+      if (e.key === "Escape") {
         e.preventDefault();
-        area.focus();
+        return opts.onCancel();
+      }
+      if (e.key === "Enter") {
+        // Enter on a kind button moves on to the text; on any other button it presses it, as usual.
+        if (e.target instanceof HTMLElement && e.target.parentElement?.classList.contains("picker")) {
+          e.preventDefault();
+          area.focus();
+        }
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = kindOfKey(e.key, e.code, e.shiftKey);
+      if (k) {
+        e.preventDefault();
+        choose(k);
       }
     });
     const row = h(
       "div",
       { class: "row" },
-      h("span", { class: "hint", text: "Press Q, E or ? to choose. Enter saves, Esc cancels." }),
+      h("span", { class: "hint", text: "Q, E or ? picks the kind (Ctrl or Cmd + 1, 2, 3 while typing). Enter saves, Esc cancels." }),
       opts.onDelete ? h("button", { class: "del", type: "button", onClick: opts.onDelete }, "Delete") : null,
     );
-    return h("div", { class: "editor" }, pick, area, row);
+    root.append(pick.el, area, row);
+    return root;
   }
 
   private composer(e: { src: string | null; quote: string | null; initial: NoteKind; reply: boolean }): HTMLElement {
-    const card = h("div", { class: `card active k-${e.initial}` });
+    const card = h("div", { class: `card active composing k-${e.initial}` });
     let quote = e.quote;
     const quoteLine = h("div", { class: "quote" });
     const drawQuote = () => {
@@ -456,7 +604,7 @@ export class ReadingView {
     const editing = this.editing?.kind === "edit" && this.editing.note.start === n.start;
     const answered = t.answers.length > 0;
     const { body, quote } = splitQuote(n.text);
-    const card = h("div", { class: `card k-${n.kind}${answered ? " answered" : ""}${group.src && group.src === this.active ? " active" : ""}`, "data-line": n.start });
+    const card = h("div", { class: `card k-${n.kind}${answered ? " answered" : ""}${editing ? " editing" : ""}${group.src && group.src === this.active ? " active" : ""}`, "data-line": n.start });
     if (editing) {
       card.append(
         this.editor({
@@ -495,6 +643,7 @@ export class ReadingView {
         if (b) this.ensureVisible(b.top * this.zoom);
       }
       this.editing = { kind: "edit", note: n };
+      this.draft = null;
       this.drawNotes();
       this.notesCol.querySelector<HTMLElement>(".editor textarea")?.focus();
     });
@@ -503,9 +652,11 @@ export class ReadingView {
 
   /** Answer Claude's answer: a new note under the old ones, which Claude Code finds as it finds any unanswered note. */
   private reply(src: string | null, original: Note, quote: string | null): void {
-    this.editing = { kind: "new", src, quote, initial: original.kind === "?" ? "Q" : original.kind, reply: true };
+    this.editing = { kind: "new", src, quote, initial: original.kind === "?" ? "Q" : original.kind, reply: true, y: null };
+    this.draft = null;
     this.drawNotes();
-    this.notesCol.querySelector<HTMLElement>(".editor .picker button[aria-pressed='true']")?.focus();
+    this.focusBox();
+    this.revealBox();
   }
 
   /** Remove a note and the answers under it, last line first so the line numbers stay right. */
