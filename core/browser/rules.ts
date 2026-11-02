@@ -219,7 +219,7 @@ function startBefore(leaf: Element, root: Element): Pos {
   return posBefore(el);
 }
 
-export function adjustOverflow(overflow: Range, root: Element, bounds?: Bounds): Range | undefined {
+function adjustCore(overflow: Range, root: Element, bounds?: Bounds): Range | undefined {
   const range = overflow.cloneRange();
   let moved = false;
   if (bounds) {
@@ -356,6 +356,51 @@ export function adjustOverflow(overflow: Range, root: Element, bounds?: Bounds):
     break;
   }
   return moved ? range : undefined;
+}
+
+/** A heading keeps at least this many lines of what follows it on its page. */
+const MIN_AFTER_HEADING = 3;
+
+const isHeadingLeaf = (el: Element): boolean => /^H[2-6]$/.test(el.tagName);
+
+/**
+ * The last heading above the cut, when fewer than MIN_AFTER_HEADING lines follow it on this page. (Keeping a heading with
+ * the next block is not enough: that block may be a single two-line list item.)
+ */
+function strandedHeading(cut: Range, root: Element): Element | null {
+  const leaves = leavesIn(root).filter((l) => cut.comparePoint(l, 0) < 0);
+  let h = -1;
+  for (let i = leaves.length - 1; i >= 0; i--) {
+    if (isHeadingLeaf(leaves[i])) {
+      h = i;
+      break;
+    }
+  }
+  if (h <= 0) return null; // no heading, or the heading starts the page
+  const at = textPosAfter({ node: cut.startContainer, offset: cut.startOffset }, root); // the first text after the cut
+  let after = 0;
+  for (let i = h + 1; i < leaves.length; i++) {
+    const leaf = leaves[i];
+    if (isHeadingLeaf(leaf)) continue;
+    const holdsCut = !!at && leaf.contains(at.node);
+    const { lines, cut: k } = linesOf(leaf, holdsCut ? at! : undefined);
+    after += holdsCut ? k : lines.length;
+  }
+  return after < MIN_AFTER_HEADING ? leaves[h] : null;
+}
+
+export function adjustOverflow(overflow: Range, root: Element, bounds?: Bounds): Range | undefined {
+  let result = adjustCore(overflow, root, bounds);
+  for (let guard = 0; guard < 4; guard++) {
+    const stranded = strandedHeading(result ?? overflow, root);
+    if (!stranded) break;
+    const before = startBefore(stranded, root);
+    if (!hasContentBefore(root, before)) break;
+    const moved = overflow.cloneRange();
+    moved.setStart(before.node, before.offset);
+    result = adjustCore(moved, root, bounds) ?? moved;
+  }
+  return result;
 }
 
 type LayoutLike = {

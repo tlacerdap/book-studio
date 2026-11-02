@@ -269,3 +269,4 @@ lines of the kinds above.
 - Footnotes print as a list at the end of the chapter.
 
 - A heading followed by an unsplittable element (a list item) too tall to share the page with it no longer ends up alone on a page: the element is split, between its inner items where it has them.
+- A heading always keeps at least three lines of what follows it on its page; a heading followed by a single two-line list item moves to the next page with it.
