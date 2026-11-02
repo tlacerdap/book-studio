@@ -64,6 +64,7 @@ const PLACEHOLDER: Record<string, string> = {
 };
 const FRAME_WIDTH = 840;
 const NOTES_WIDTH = 296;
+const MIN_NOTES_WIDTH = 210;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2;
 
@@ -205,13 +206,17 @@ export class ReadingView {
   }
 
   private fitZoom(): number {
-    const room = this.scroller.clientWidth - 2 * NOTES_WIDTH * 0.6 - 32;
+    // The whole page and the notes beside it, so adding a first note never makes the view scroll sideways.
+    const room = this.scroller.clientWidth - NOTES_WIDTH - 12 - 16 - 24;
     return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, room / FRAME_WIDTH));
   }
 
   /**
-   * The page sits in the middle of the room the window gives it. When the notes need more room than a centred page
-   * leaves on its right, the page moves left by just that much, never further.
+   * The page sits in the middle of the room the window gives it. The view scrolls sideways only when the page itself
+   * is wider than the window. When the page fits, so does everything else:
+   *  - the notes use the room to the right of a centred page;
+   *  - if that is too little, the page moves left by just what the notes need;
+   *  - if even that is not enough, the notes narrow, and in the last resort sit over the page's right edge.
    */
   private layout(): void {
     const z = this.fit ? this.fitZoom() : this.zoom;
@@ -219,15 +224,38 @@ export class ReadingView {
     const room = this.scroller.clientWidth;
     const w = FRAME_WIDTH * z;
     const h = this.docHeight * z;
-    const needRight = NOTES_WIDTH + 12 + 16;
-    let left = (room - w) / 2;
-    if (this.notesCol.childElementCount > 0 && left < needRight) left = Math.max(12, room - w - needRight);
-    left = Math.max(12, left);
+    const gap = 12;
+    const edge = 16;
+    const hasNotes = this.notesCol.childElementCount > 0;
+    const fits = w + 24 <= room;
+    let left = Math.max(12, (room - w) / 2);
+    let notesW = NOTES_WIDTH;
+    let notesLeft: number;
+    let stageW: number;
+    if (!fits) {
+      // The page is wider than the window: this is the one case that scrolls sideways.
+      left = 12;
+      notesLeft = left + w + gap;
+      stageW = hasNotes ? notesLeft + NOTES_WIDTH + edge : left + w + 12;
+    } else {
+      if (hasNotes && left + w + gap + NOTES_WIDTH + edge > room) left = Math.max(12, room - w - gap - NOTES_WIDTH - edge);
+      notesLeft = left + w + gap;
+      const avail = room - edge - notesLeft;
+      if (hasNotes && avail < NOTES_WIDTH) {
+        if (avail >= MIN_NOTES_WIDTH) notesW = avail;
+        else {
+          notesW = MIN_NOTES_WIDTH;
+          notesLeft = room - edge - notesW;
+        }
+      }
+      stageW = room;
+    }
     this.wrap.style.cssText = `left:${left}px;width:${w}px;height:${h}px`;
     this.frame.style.transform = `scale(${z})`;
-    this.notesCol.style.cssText = `left:${left + w + 12}px;width:${NOTES_WIDTH}px;height:${h}px`;
+    // An empty margin takes no room at all, so it cannot make the view scroll sideways.
+    this.notesCol.style.cssText = `left:${notesLeft}px;width:${notesW}px;height:${h}px${hasNotes ? "" : ";display:none"}`;
     this.wrap.style.transition = this.notesCol.style.transition = "left 0.15s";
-    this.stage.style.cssText = `width:${Math.max(room, left + w + needRight + 12)}px;height:${Math.max(h + 8, this.notesBottom + 24)}px`;
+    this.stage.style.cssText = `width:${stageW}px;height:${Math.max(h + 8, this.notesBottom + 24)}px`;
     this.loading.style.zIndex = "3";
   }
 

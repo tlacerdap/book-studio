@@ -84,7 +84,7 @@ button { font: inherit; color: inherit; }
 
 #reading { overflow: auto; background: var(--desk); position: relative; }
 .stage { position: relative; }
-.frame-wrap { position: absolute; top: 0; }
+.frame-wrap { position: absolute; top: 0; overflow: hidden; }
 .frame-wrap iframe { display: block; border: 0; background: var(--desk); transform-origin: 0 0; }
 .notes-col { position: absolute; top: 0; }
 .loading { position: sticky; top: 0; z-index: 3; padding: 10px 16px; color: var(--ink-3); background: linear-gradient(var(--desk), transparent); }

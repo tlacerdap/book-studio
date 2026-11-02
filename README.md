@@ -19,6 +19,7 @@ that start with a heading, or at least two numbered ones like `01-intro.md`); ot
 reloads silently, or, if you have unsaved edits, a banner asks Reload or Keep mine.
 
 - **Left panel:** Parts and chapters, the open chapter's H2/H3 outline, a badge with its count of open notes, and how long the book is: pages per chapter and a total. The count comes from laying every chapter out quietly in the background (about 20 seconds the first time, remembered after that) and matches the numbered pages of the PDF; the PDF also has a cover and the contents.
+- **Sideways scrolling:** the reading view scrolls sideways only when the page itself is wider than the window. Otherwise the page is centred, and the notes use the room beside it (narrowing, or sitting over the page's blank right margin, when room is short). Fit (`9`) shows the whole page with room for the notes.
 - **Reading view:** the chapter laid out exactly as it prints (same styles, same pagination rules). Read only; click a
   block, or select text, then add a note. Blocks with notes get a thin rule on their left; notes are cards in the margin.
 - **Source view:** the markdown in CodeMirror, editable. Cmd/Ctrl+S saves; leaving a chapter or closing the window with
