@@ -19,4 +19,5 @@ a { cursor: pointer; }
 ::highlight(note-block-done) { background-color: rgba(120, 170, 130, 0.22); color: inherit; }
 ::highlight(note-quote-done) { background-color: rgba(120, 170, 130, 0.45); color: inherit; }
 ::highlight(note-quote) { background-color: rgba(255, 214, 102, 0.6); color: inherit; }
+::highlight(note-focus) { background-color: rgba(255, 176, 32, 0.8); color: inherit; }
 ::highlight(note-pending) { background-color: rgba(255, 214, 102, 0.85); color: inherit; }

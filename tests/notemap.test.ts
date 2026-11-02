@@ -79,4 +79,11 @@ describe("quoted words", () => {
     expect(parseNotes(tricky).filter((n) => n.kind === "E" && n.text.startsWith("x"))).toHaveLength(1);
     expect(withQuote("only text", null)).toBe("only text");
   });
+
+  it("keeps a long selection as its first and last words", () => {
+    const quote = "Deviate when: your team already runs Poetry ... and use the async SDK client (AsyncAnthropic) inside.";
+    const text = withQuote("tighten this", quote);
+    expect(text).toBe(`tighten this [on: "${quote}"]`);
+    expect(splitQuote(text)).toEqual({ body: "tighten this", quote });
+  });
 });

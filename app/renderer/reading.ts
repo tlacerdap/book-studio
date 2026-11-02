@@ -85,6 +85,8 @@ export class ReadingView {
   /** Where the reader last clicked on the page, with the block it was in. */
   private clickAt: { src: string | null; y: number } | null = null;
   private draft: Draft | null = null;
+  /** Notes (by the line they start on) the reader just pointed at on the page: shown strongest, both there and here. */
+  private focusIds: number[] = [];
   /** The note box that is on screen right now, if any: how the page's keys reach it. */
   private liveEditing: Editing = null;
   private liveBox: { choose(k: NoteKind): void; cancel(): void } | null = null;
@@ -143,6 +145,7 @@ export class ReadingView {
     this.key = key;
     this.ready = false;
     this.editing = null;
+    this.focusIds = [];
     this.active = null;
     const token = ++this.renderToken;
     this.loading.hidden = false;
@@ -283,11 +286,13 @@ export class ReadingView {
         this.loading.hidden = true;
         this.hooks.onError(String(m.message));
         break;
-      case "click":
+      case "click": {
         this.selection = null;
         this.clickAt = { src: (m.src as string | null) ?? null, y: Number(m.y) };
         this.setActive((m.src as string | null) ?? null);
+        this.showNotes(((m.notes as number[] | undefined) ?? []).map(Number));
         break;
+      }
       case "select":
         this.selection = m.src ? { src: String(m.src), text: String(m.text ?? ""), y: Number(m.y) } : null;
         this.clickAt = m.src ? { src: String(m.src), y: Number(m.y) } : null;
@@ -327,25 +332,45 @@ export class ReadingView {
     this.sendMarks();
   }
 
+  /**
+   * The reader clicked marked text: show exactly which note it is. Its card is outlined and brought into view, and its
+   * words are marked strongest on the page. Clicking anywhere unmarked clears this.
+   */
+  private showNotes(ids: number[]): void {
+    const same = ids.length === this.focusIds.length && ids.every((i, k) => i === this.focusIds[k]);
+    this.focusIds = ids;
+    if (!same || ids.length) this.drawNotes();
+    const card = ids.length ? this.notesCol.querySelector<HTMLElement>(`.card[data-line="${ids[0]}"]`) : null;
+    if (!card) return;
+    const top = card.offsetTop;
+    const bottom = top + card.offsetHeight;
+    const view = this.scroller.scrollTop;
+    const height = this.scroller.clientHeight;
+    if (top < view + 16 || bottom > view + height - 16) this.scroller.scrollTop = Math.max(0, top - 80);
+    card.classList.remove("pulse");
+    void card.offsetWidth;
+    card.classList.add("pulse");
+  }
+
   private sendMarks(): void {
     const { groups } = placeNotes(this.text, this.blocks);
     const notes: Record<string, "open" | "answered"> = {};
-    const quotes: { src: string; text: string; done: boolean }[] = [];
-    const wholes: { src: string; done: boolean }[] = [];
+    const quotes: { id: number; src: string; text: string; done: boolean }[] = [];
+    const wholes: { id: number; src: string; done: boolean }[] = [];
     for (const g of groups) {
       if (!g.src) continue;
       notes[g.src] = g.open ? "open" : "answered";
       for (const t of g.threads) {
         const q = splitQuote(t.note.text).quote;
         const done = t.answers.length > 0;
-        if (q) quotes.push({ src: g.src, text: q, done });
-        else wholes.push({ src: g.src, done });
+        if (q) quotes.push({ id: t.note.start, src: g.src, text: q, done });
+        else wholes.push({ id: t.note.start, src: g.src, done });
       }
     }
     // While a note is being written, the words it will point at are shown a little stronger.
     const e = this.editing;
     const pending = e?.kind === "new" && e.quote && e.src ? { src: e.src, text: e.quote } : this.selection;
-    this.post({ type: "mark", notes, active: this.active, quotes, wholes, pending });
+    this.post({ type: "mark", notes, active: this.active, quotes, wholes, pending, focus: this.focusIds });
   }
 
   // ---- notes ---------------------------------------------------------------------------------
@@ -393,6 +418,7 @@ export class ReadingView {
   }
 
   private commit(newText: string): void {
+    this.focusIds = [];
     this.editing = null;
     this.draft = null;
     this.selection = null;
@@ -603,7 +629,7 @@ export class ReadingView {
       if (!quote) return;
       quoteLine.append(
         h("span", {}, e.reply ? "About " : "On "),
-        h("q", {}, quote.length > 90 ? `${quote.slice(0, 90)}...` : quote),
+        h("q", {}, quote),
         h("button", { type: "button", title: "Do not point at these words", "aria-label": "Remove the quoted words", onClick: () => { quote = null; drawQuote(); if (this.editing?.kind === "new") this.editing.quote = null; this.sendMarks(); } }, "\u00d7"),
       );
     };
@@ -632,7 +658,7 @@ export class ReadingView {
     const editing = this.editing?.kind === "edit" && this.editing.note.start === n.start;
     const answered = t.answers.length > 0;
     const { body, quote } = splitQuote(n.text);
-    const card = h("div", { class: `card k-${n.kind}${answered ? " answered" : ""}${editing ? " editing" : ""}${group.src && group.src === this.active ? " active" : ""}`, "data-line": n.start });
+    const card = h("div", { class: `card k-${n.kind}${answered ? " answered" : ""}${editing ? " editing" : ""}${this.focusIds.includes(n.start) ? " focus" : ""}${group.src && group.src === this.active ? " active" : ""}`, "data-line": n.start });
     if (editing) {
       card.append(
         this.editor({
@@ -651,7 +677,7 @@ export class ReadingView {
     card.append(
       h("div", { class: "text" }, h("span", { class: "kind" }, KIND_NAME[n.kind]), body || (n.kind === "?" ? "This lost me" : ""), answered ? null : h("span", { class: "open-dot", title: "Not processed yet" })),
     );
-    if (quote) card.append(h("div", { class: "quote" }, h("span", {}, "On "), h("q", {}, quote.length > 90 ? `${quote.slice(0, 90)}...` : quote)));
+    if (quote) card.append(h("div", { class: "quote" }, h("span", {}, "On "), h("q", {}, quote)));
     for (const a of t.answers) {
       card.append(
         h(
@@ -671,6 +697,7 @@ export class ReadingView {
         if (b) this.ensureVisible(b.top * this.zoom);
       }
       this.editing = { kind: "edit", note: n };
+      this.focusIds = [n.start];
       this.draft = null;
       this.drawNotes();
       this.notesCol.querySelector<HTMLElement>(".editor textarea")?.focus();
