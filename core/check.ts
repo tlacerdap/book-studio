@@ -321,8 +321,14 @@ function checkTextIntegrity(pages: PageInfo[], sources: { name: string; text: st
   const md = makeMarkdown(new Set());
   const missing: string[] = [];
   for (const src of sources) {
+    let inTable = false;
     for (const tok of md.parse(stripNotes(src.text).text, {})) {
+      // A table prints its columns side by side, so the lines of one cell are interleaved with its neighbours' and its
+      // text is never one run in the printed text. Table cells are therefore not compared here.
+      if (tok.type === "table_open") inTable = true;
+      else if (tok.type === "table_close") inTable = false;
       const pieces: string[] = [];
+      if (inTable) continue;
       if (tok.type === "inline" && tok.children) {
         // An external link prints its address after its text, so the run of source text is broken there.
         let cur = "";
