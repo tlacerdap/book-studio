@@ -78,9 +78,7 @@ module (used by the checker's ink and colour checks) for both: `npm install --no
 Linux machine (its packaging tool fails on macOS); the other installers build anywhere. The icon is `assets/icon.png`,
 drawn by `npm run icon`.
 
-**CI.** `.github/workflows/build.yml` builds on macOS, Windows and Linux for each push to `main`, each pull request and
-on demand (Actions > build > Run workflow). Every job uploads its installers as an artifact of the run, and the Linux job
-also runs the tests under `xvfb`. Nothing is published or released automatically.
+**No CI.** Installers are built by hand on this machine with `npm run dist` (the Linux `.deb` needs a Linux machine). The GitHub Actions workflow that used to build all three systems on every push was removed: it only ever filled GitHub's artifact storage, and nothing depended on it.
 
 ## First launch
 
