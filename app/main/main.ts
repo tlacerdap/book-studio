@@ -31,7 +31,7 @@ import { PACKAGE_ROOT, STYLES } from "../../core/paths.ts";
 import type { CheckReport } from "../../core/check.ts";
 import { PageCounter, type PageCounts } from "./pagecount.ts";
 import { applyPrintSwitches, renderPdf } from "../../electron/render-pdf.ts";
-import type { BookInfo, ChapterText, ExportKind, ExportOutcome, MenuCommand, OpenResult, PrintOutcome, UnsavedChoice } from "../shared/api.ts";
+import type { Appearance, BookInfo, ChapterText, ExportKind, ExportOutcome, Theme, MenuCommand, OpenResult, PrintOutcome, UnsavedChoice } from "../shared/api.ts";
 
 const SCHEME = "bookstudio";
 const APP_ORIGIN = `${SCHEME}://app/`;
@@ -144,27 +144,37 @@ function handleProtocol(req: Request): Response {
 // Settings of the app itself (not of a book)
 // ------------------------------------------------------------------------------------------------
 
-type Theme = "system" | "light" | "dark";
 const settingsFile = () => path.join(app.getPath("userData"), "settings.json");
 
-function readTheme(): Theme {
+const THEMES: Theme[] = ["light", "sepia", "dark", "black", "system"];
+const DEFAULT_APPEARANCE: Appearance = { theme: "light", warmth: 0 };
+let appearance: Appearance = DEFAULT_APPEARANCE;
+
+function readAppearance(): Appearance {
   try {
-    const t = (JSON.parse(fs.readFileSync(settingsFile(), "utf8")) as { theme?: string }).theme;
-    return t === "light" || t === "dark" ? t : "system";
+    const raw = JSON.parse(fs.readFileSync(settingsFile(), "utf8")) as { theme?: string; warmth?: number };
+    const theme = THEMES.includes(raw.theme as Theme) ? (raw.theme as Theme) : DEFAULT_APPEARANCE.theme;
+    const warmth = typeof raw.warmth === "number" && raw.warmth >= 0 && raw.warmth <= 1 ? Math.round(raw.warmth * 100) / 100 : 0;
+    return { theme, warmth };
   } catch {
-    return "system";
+    return DEFAULT_APPEARANCE;
   }
 }
 
-function setTheme(theme: Theme): void {
-  nativeTheme.themeSource = theme;
+/** Change how the app looks (the theme, the warm tint) and remember it. The window is told; the menu follows. */
+function setAppearance(change: Partial<Appearance>): Appearance {
+  appearance = { ...appearance, ...change };
+  // Native parts (scroll bars, the spell-check menu) follow whether the theme is a dark one.
+  nativeTheme.themeSource = appearance.theme === "system" ? "system" : appearance.theme === "dark" || appearance.theme === "black" ? "dark" : "light";
   try {
     fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
-    fs.writeFileSync(settingsFile(), JSON.stringify({ theme }, null, 2));
+    fs.writeFileSync(settingsFile(), JSON.stringify(appearance, null, 2));
   } catch {
     /* the choice just is not remembered */
   }
+  mainWindow?.webContents.send("appearance", appearance);
   buildMenu();
+  return appearance;
 }
 
 const recentFile = () => path.join(app.getPath("userData"), "recent.json");
@@ -509,6 +519,13 @@ function registerIpc(): void {
     return text;
   });
   handle("style:edit", () => editorCss(readCss(styleFiles(requireBook(), [], { paged: false }))));
+  handle("appearance:get", () => appearance);
+  handle("appearance:set", (change: Partial<Appearance>) => {
+    const next: Partial<Appearance> = {};
+    if (change && THEMES.includes(change.theme as Theme)) next.theme = change.theme;
+    if (change && typeof change.warmth === "number" && change.warmth >= 0 && change.warmth <= 1) next.warmth = Math.round(change.warmth * 100) / 100;
+    return setAppearance(next);
+  });
   handle("export:run", (kind: ExportKind, file: string | null) => exportRun(kind, file));
   handle("image:save", (chapter: string, bytes: Uint8Array) => {
     const b = requireBook();
@@ -748,16 +765,24 @@ function buildMenu(): void {
         { label: "Focus Mode", accelerator: "CmdOrCtrl+Alt+F", click: () => send("focus") },
         {
           label: "Appearance",
-          submenu: (["system", "light", "dark"] as const).map((t) => ({
-            label: t === "system" ? "Match the System" : t === "light" ? "Light" : "Dark",
+          submenu: THEMES.map((t) => ({
+            label: { light: "Light", sepia: "Sepia (warm paper)", dark: "Dark", black: "Black", system: "Match the System" }[t],
             type: "radio" as const,
-            checked: readTheme() === t,
-            click: () => setTheme(t),
+            checked: appearance.theme === t,
+            click: () => setAppearance({ theme: t }),
+          })),
+        },
+        {
+          label: "Eye Comfort",
+          submenu: ([["Off", 0], ["Low", 0.25], ["Medium", 0.5], ["High", 0.75]] as const).map(([label, w]) => ({
+            label: `Warm Tint: ${label}`,
+            type: "radio" as const,
+            checked: Math.abs(appearance.warmth - w) < 0.13 && (w === 0 ? appearance.warmth === 0 : appearance.warmth > 0),
+            click: () => setAppearance({ warmth: w }),
           })),
         },
         { label: "Previous Chapter", accelerator: "CmdOrCtrl+[", click: () => send("prev-chapter") },
         { label: "Next Chapter", accelerator: "CmdOrCtrl+]", click: () => send("next-chapter") },
-        { type: "separator" },
         { type: "separator" },
         { label: "Zoom In", accelerator: "CmdOrCtrl+=", click: () => send("zoom-in") },
         { label: "Zoom Out", accelerator: "CmdOrCtrl+-", click: () => send("zoom-out") },
@@ -833,7 +858,7 @@ app.whenReady().then(() => {
   );
   painter = new DiagramPainter(path.join(app.getPath("userData"), "diagrams"), `${SCHEME}://assets/`);
   setDiagramProvider(painter.lookup);
-  nativeTheme.themeSource = readTheme();
+  setAppearance(readAppearance());
   if (counter) counter.prepare = (text) => drawDiagrams([text]);
   registerIpc();
   buildMenu();

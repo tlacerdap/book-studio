@@ -5,7 +5,7 @@ import { chapterId } from "../../core/ids.ts";
 import { openNotes, parseNotes, stripNotes } from "../../core/notes.ts";
 import { outline } from "../../core/notemap.ts";
 import type { SearchHit } from "../../core/search.ts";
-import type { BookHints, BookInfo, ExportKind, FormatCommand, MenuCommand, OpenResult, PageCounts, WritingHint } from "../shared/api.ts";
+import type { Appearance, BookHints, BookInfo, ExportKind, FormatCommand, MenuCommand, OpenResult, PageCounts, WritingHint } from "../shared/api.ts";
 import { askText, openHistory, openPalette, paletteItems } from "./dialogs.ts";
 import { clear, h } from "./dom.ts";
 import { Panel } from "./panel.ts";
@@ -270,6 +270,84 @@ const edit = new EditView(viewEls.edit, {
   onToast: (m) => toast(m),
 });
 
+// ------------------------------------------------------------------------------------------------
+// Appearance: the reading theme and the warm tint
+// ------------------------------------------------------------------------------------------------
+
+let appearance: Appearance = { theme: "light", warmth: 0 };
+const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
+const warmEl = h("div", { id: "warm", "aria-hidden": "true" });
+document.body.append(warmEl);
+
+const THEME_TILES: { theme: Appearance["theme"]; label: string; page: string; ink: string }[] = [
+  { theme: "light", label: "Light", page: "#ffffff", ink: "#1f1e1d" },
+  { theme: "sepia", label: "Sepia", page: "#f9f2e0", ink: "#3b2f1e" },
+  { theme: "dark", label: "Dark", page: "#262523", ink: "#e6e2d9" },
+  { theme: "black", label: "Black", page: "#0d0d0d", ink: "#e8e6e1" },
+  { theme: "system", label: "System", page: "linear-gradient(135deg, #ffffff 50%, #262523 50%)", ink: "#8a8782" },
+];
+
+function resolvedTheme(): "light" | "sepia" | "dark" | "black" {
+  return appearance.theme === "system" ? (systemDark.matches ? "dark" : "light") : appearance.theme;
+}
+
+function applyAppearance(a: Appearance): void {
+  appearance = a;
+  const theme = resolvedTheme();
+  document.documentElement.dataset.theme = theme;
+  reading.setTheme(theme);
+  edit.setTheme(theme);
+  warmEl.style.opacity = String(Math.round(a.warmth * 35) / 100);
+  if (document.getElementById("theme-pop")) showThemePopover(true);
+}
+
+systemDark.addEventListener("change", () => applyAppearance(appearance));
+api.onAppearance((a) => applyAppearance(a));
+
+/** The reading themes and the warm tint, in a small panel under the toolbar. */
+function showThemePopover(reopen = false): void {
+  const old = document.getElementById("theme-pop");
+  if (old) {
+    old.remove();
+    if (!reopen) return;
+  }
+  const pop = h("div", { id: "theme-pop", role: "dialog", "aria-label": "Appearance" }, h("div", { class: "tp-title" }, "Reading theme"));
+  const grid = h("div", { class: "tp-grid" });
+  for (const t of THEME_TILES) {
+    grid.append(
+      h(
+        "button",
+        { class: "tp-tile", type: "button", "aria-pressed": String(appearance.theme === t.theme), onClick: () => void api.setAppearance({ theme: t.theme }) },
+        h("span", { class: "tp-swatch", style: `background:${t.page};color:${t.ink}` }, "Aa"),
+        h("span", { class: "tp-name" }, t.label),
+      ),
+    );
+  }
+  const slider = h("input", { type: "range", min: "0", max: "100", step: "5", value: String(Math.round(appearance.warmth * 100)), "aria-label": "Warm tint" }) as HTMLInputElement;
+  const value = h("span", { class: "tp-val" }, appearance.warmth ? `${Math.round(appearance.warmth * 100)}%` : "Off");
+  slider.addEventListener("input", () => {
+    value.textContent = Number(slider.value) ? `${slider.value}%` : "Off";
+    warmEl.style.opacity = String((Number(slider.value) * 0.35) / 100);
+  });
+  slider.addEventListener("change", () => void api.setAppearance({ warmth: Number(slider.value) / 100 }));
+  pop.append(
+    grid,
+    h("div", { class: "tp-title" }, "Eye comfort"),
+    h("div", { class: "tp-row" }, h("span", {}, "Warm tint"), slider, value),
+    h("p", { class: "tp-note" }, "A warm tint takes the blue out of the screen, which helps in the evening. Sepia and Dark change the pages too."),
+  );
+  document.body.append(pop);
+}
+
+// One listener for the panel's life: a click anywhere else, or Esc, closes it.
+document.addEventListener("mousedown", (e) => {
+  const pop = document.getElementById("theme-pop");
+  if (pop && !pop.contains(e.target as Node) && !(e.target as HTMLElement).closest(".theme-btn")) pop.remove();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") document.getElementById("theme-pop")?.remove();
+});
+
 /** Where a picture written in the open chapter as `src` is served from. */
 function pictureUrl(src: string): string {
   if (/^data:image\//i.test(src)) return src;
@@ -357,6 +435,7 @@ function renderToolbar(): void {
             h("button", { type: "button", title: `Zoom in (${mod}++)`, "aria-label": "Zoom in", onClick: () => zoomTo(0.1) }, "+"),
           )]
         : []),
+      h("button", { class: "icon-btn theme-btn", type: "button", title: "Reading theme and eye comfort (sepia, dark, warm tint...)", "aria-label": "Appearance", onClick: () => showThemePopover() }, "\u25d0"),
       h("button", { class: "icon-btn", type: "button", title: "How notes for Claude work", "aria-label": "How notes work", onClick: () => toggleHelp() }, "?"),
       h("button", { class: "tb-btn", type: "button", title: `Leave a note for Claude on the selected block (${mod}+Shift+M)`, onClick: () => addNote() }, "Add note"),
       h("button", { class: "tb-btn primary", type: "button", disabled: busy, title: `Make the PDF (${mod}+P)`, onClick: () => void printPdf() }, busy ? "Making PDF..." : "Print PDF"),
@@ -1369,6 +1448,7 @@ api.onQueryClose(async () => {
 // ------------------------------------------------------------------------------------------------
 
 async function start(): Promise<void> {
+  applyAppearance(await api.appearance());
   renderFormatbar();
   showPanelTab();
   renderToolbar();

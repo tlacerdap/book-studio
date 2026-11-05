@@ -47,9 +47,10 @@
   --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
 }
 
-/* Dark mode follows the system (or the choice in View > Appearance). The book's pages stay white, like paper. */
-@media (prefers-color-scheme: dark) {
-  :root {
+/* Reading themes (View > Appearance, or the button in the toolbar). The page itself follows the theme too: see
+   styles/reading.css for the pages and app/renderer/edit.ts for the Edit view. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
     --bg: #242321;
     --panel: #2b2a28;
     --desk: #1b1a19;
@@ -81,9 +82,82 @@
     --hl-quote: #b7b4ae;
     --hl-mark: #8f8c86;
     --hl-link: #8fb0dc;
-  }
-  .nb-badge { color: #1f1e1d; }
 }
+:root[data-theme="dark"] .nb-badge { color: #1f1e1d; }
+
+:root[data-theme="black"] {
+  color-scheme: dark;
+  --bg: #000000;
+  --panel: #0a0a0a;
+  --desk: #000000;
+  --ink: #e8e6e1;
+  --ink-2: #aeaba5;
+  --ink-3: #7e7b76;
+  --line: #262626;
+  --line-strong: #444444;
+  --accent: #e8e6e1;
+  --surface: #121212;
+  --surface-2: #1a1a1a;
+  --on-ink: #000000;
+  --hover: rgba(255, 255, 255, 0.07);
+  --hover-2: rgba(255, 255, 255, 0.12);
+  --code-bg: #1d1d1d;
+  --ok-bg: #0f1d12;
+  --ok-line: #2c4a32;
+  --warn-bg: #2b2210;
+  --warn-line: #54431f;
+  --diff-add: #14291a;
+  --diff-del: #34191b;
+  --link: #8fb0ff;
+  --note-q: #8fb0dc;
+  --note-e: #d9a36a;
+  --note-c: #c493c4;
+  --warn: #ec8b7b;
+  --ok: #86c490;
+  --hl-code: #d8b57a;
+  --hl-quote: #aeaba5;
+  --hl-mark: #7e7b76;
+  --hl-link: #8fb0dc;
+}
+:root[data-theme="black"] .nb-badge { color: #000; }
+
+/* Sepia: warm paper, brown ink, easy on the eyes for long reading. */
+:root[data-theme="sepia"] {
+  --bg: #f2e8d2;
+  --panel: #eadebf;
+  --desk: #e0d1ae;
+  --ink: #3b2f1e;
+  --ink-2: #66573f;
+  --ink-3: #8a785a;
+  --line: #d3c29c;
+  --line-strong: #b8a27a;
+  --accent: #3b2f1e;
+  --surface: #f9f2e0;
+  --surface-2: #efe3c6;
+  --on-ink: #f9f2e0;
+  --hover: rgba(90, 60, 20, 0.07);
+  --hover-2: rgba(90, 60, 20, 0.13);
+  --code-bg: #e7d9b7;
+  --ok-bg: #e9ecd2;
+  --ok-line: #bcc79a;
+  --warn-bg: #f3dfae;
+  --warn-line: #d9bf7e;
+  --diff-add: #dfe7bf;
+  --diff-del: #efcfb6;
+  --link: #7a4a1f;
+  --note-q: #3b5a82;
+  --note-e: #7a4a1f;
+  --note-c: #6b3b6b;
+  --warn: #8a2a1c;
+  --ok: #3d5a2d;
+  --hl-code: #6b4a1f;
+  --hl-quote: #66573f;
+  --hl-mark: #8a785a;
+  --hl-link: #3b5a82;
+}
+
+/* The eye-comfort tint: a warm veil over everything, which takes the blue out of white. */
+#warm { position: fixed; inset: 0; z-index: 9999; pointer-events: none; background: rgb(255, 150, 40); mix-blend-mode: multiply; opacity: 0; transition: opacity 0.2s; }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
@@ -470,3 +544,17 @@ button { font: inherit; color: inherit; }
 /* ---- The Edit view: the page itself, edited ----------------------------------------------------- */
 
 #edit { overflow: auto; background: var(--desk); position: relative; }
+
+/* ---- The appearance panel ---------------------------------------------------------------------- */
+
+#theme-pop { position: fixed; top: 52px; right: 16px; width: 330px; z-index: 30; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px 12px; box-shadow: 0 10px 34px rgba(0, 0, 0, 0.22); font-size: 13px; }
+.tp-title { font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin: 2px 0 8px; }
+.tp-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 14px; }
+.tp-tile { border: 0; background: none; padding: 0; cursor: pointer; text-align: center; color: var(--ink-2); font: inherit; }
+.tp-swatch { display: flex; align-items: center; justify-content: center; height: 42px; border-radius: 8px; border: 2px solid var(--line); font: 400 17px var(--font-serif); }
+.tp-tile[aria-pressed="true"] .tp-swatch { border-color: #5b8def; box-shadow: 0 0 0 2px rgba(91, 141, 239, 0.3); }
+.tp-name { display: block; margin-top: 4px; font-size: 11.5px; }
+.tp-row { display: flex; align-items: center; gap: 10px; }
+.tp-row input[type="range"] { flex: 1; accent-color: #d98a2b; }
+.tp-val { min-width: 34px; text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.tp-note { margin: 10px 0 0; font-size: 12px; color: var(--ink-3); }

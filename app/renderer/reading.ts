@@ -111,6 +111,7 @@ export class ReadingView {
   private resizer: ResizeObserver;
   private pencil: HTMLElement;
   private wrapLeft = 12;
+  private theme = "light";
 
   constructor(
     private root: HTMLElement,
@@ -177,6 +178,12 @@ export class ReadingView {
   setText(text: string): void {
     this.text = text;
     if (this.ready) this.drawNotes();
+  }
+
+  /** The page takes the reader's theme (light, sepia, dark, black). */
+  setTheme(theme: string): void {
+    this.theme = theme;
+    this.post({ type: "theme", theme });
   }
 
   clearView(): void {
@@ -287,6 +294,7 @@ export class ReadingView {
         this.docHeight = Math.ceil(m.height as number);
         this.frame.style.height = `${this.docHeight}px`;
         this.ready = true;
+        this.post({ type: "theme", theme: this.theme });
         this.loading.hidden = true;
         this.hooks.onPages(Number(m.pages));
         this.layout();

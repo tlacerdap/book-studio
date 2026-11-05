@@ -24,11 +24,19 @@ a { cursor: pointer; }
 ::highlight(find-current) { background-color: rgba(60, 120, 255, 0.6); color: inherit; }
 ::highlight(note-pending) { background-color: rgba(255, 214, 102, 0.85); color: inherit; }
 
-/* The desk the pages lie on follows the app's dark mode; the pages themselves stay white. */
-@media (prefers-color-scheme: dark) {
-  html { background: #1b1a19; }
-  ::selection { background: #3f5a85; }
-}
+/* Themes: the app sets data-theme on <html> and the pages take the reader's choice (sepia, dark, black). The colours the book's
+   styles use are variables, so only they and the paper change; the layout is not touched. Printing never sees any of this. */
+html[data-theme="sepia"] { background: #e0d1ae; --color-text: #3b2f1e; --color-meta: #2a2013; --color-secondary: #66573f; --color-code-comment: #7a6a4e; --color-code-string: #4a3b22; --color-rule: #a89670; --color-code-border: #c9b78f; }
+html[data-theme="sepia"] .pagedjs_page { background: #f9f2e0; }
+html[data-theme="sepia"] ::selection { background: #e2c98f; }
+html[data-theme="dark"] { background: #1b1a19; --color-text: #e6e2d9; --color-meta: #f3f0e8; --color-secondary: #b3afa6; --color-code-comment: #9a968c; --color-code-string: #cfd6c1; --color-rule: #6b6860; --color-code-border: #55524c; }
+html[data-theme="dark"] .pagedjs_page { background: #262523; }
+html[data-theme="dark"] ::selection { background: #3f5a85; }
+html[data-theme="black"] { background: #000; --color-text: #e8e6e1; --color-meta: #f5f3ee; --color-secondary: #aeaba5; --color-code-comment: #928f89; --color-code-string: #cfd6c1; --color-rule: #5a5853; --color-code-border: #44423e; }
+html[data-theme="black"] .pagedjs_page { background: #0d0d0d; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.10); }
+html[data-theme="black"] ::selection { background: #35507a; }
+/* A diagram is black lines on white; on a dark page it is turned over so it sits in the page instead of glaring. */
+html[data-theme="dark"] img.diagram, html[data-theme="black"] img.diagram { filter: grayscale(1) invert(1) hue-rotate(180deg); }
 
 /* A picture the chapter points at but the book does not have. */
 .missing-image { color: #8a2a1c; }

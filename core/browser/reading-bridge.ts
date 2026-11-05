@@ -14,7 +14,8 @@ type ToFrame =
   | { type: "find-set"; query: string; ordinal: number | null; ctx: string | null; fromY: number }
   | { type: "find-step"; delta: number }
   | { type: "find-clear" }
-  | { type: "clear-selection" };
+  | { type: "clear-selection" }
+  | { type: "theme"; theme: string };
 
 const parentWin = window.parent;
 const send = (msg: Record<string, unknown>): void => parentWin.postMessage({ source: "book-studio-reading", ...msg }, "*");
@@ -352,6 +353,7 @@ window.addEventListener("message", (e: MessageEvent) => {
     mark(m.notes, m.active);
     highlight(m.quotes ?? [], m.wholes ?? [], m.pending ?? null, m.focus ?? []);
   }
+  else if (m.type === "theme") document.documentElement.dataset.theme = m.theme;
   else if (m.type === "scroll-to") window.scrollTo({ top: m.y });
   else if (m.type === "clear-selection") window.getSelection()?.removeAllRanges();
   else if (m.type === "find-set") findSet(m.query, m.ordinal, m.ctx, m.fromY);

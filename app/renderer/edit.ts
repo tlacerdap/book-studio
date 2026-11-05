@@ -54,6 +54,16 @@ const UI_CSS = `
 .pm-raw { margin: 0 0 0.9em; padding: 6px 10px; background: #f6f1e6; border: 1px dashed #c9b98d; border-radius: 4px; font: 12px/1.5 var(--font-mono, monospace); color: #5d4a2a; white-space: pre-wrap; user-select: none; position: relative; }
 .pm-raw::after { content: "kept exactly as written: edit it in the Source view"; display: block; margin-top: 4px; font: 10.5px var(--font-ui, sans-serif); color: #8a7a52; }
 .ProseMirror-selectednode.pm-note, .ProseMirror-selectednode.pm-raw { outline: 2px solid #5b8def; }
+/* Themes, as on the Reading pages. */
+:host([data-theme="sepia"]) { --color-text: #3b2f1e; --color-meta: #2a2013; --color-secondary: #66573f; --color-code-comment: #7a6a4e; --color-code-string: #4a3b22; --color-rule: #a89670; --color-code-border: #c9b78f; }
+:host([data-theme="sepia"]) .paper { background: #f9f2e0; color: #3b2f1e; caret-color: #3b2f1e; }
+:host([data-theme="dark"]) { --color-text: #e6e2d9; --color-meta: #f3f0e8; --color-secondary: #b3afa6; --color-code-comment: #9a968c; --color-code-string: #cfd6c1; --color-rule: #6b6860; --color-code-border: #55524c; }
+:host([data-theme="dark"]) .paper { background: #262523; color: #e6e2d9; caret-color: #e6e2d9; box-shadow: 0 0 0 1px rgba(255,255,255,.08); }
+:host([data-theme="black"]) { --color-text: #e8e6e1; --color-meta: #f5f3ee; --color-secondary: #aeaba5; --color-code-comment: #928f89; --color-code-string: #cfd6c1; --color-rule: #5a5853; --color-code-border: #44423e; }
+:host([data-theme="black"]) .paper { background: #0d0d0d; color: #e8e6e1; caret-color: #e8e6e1; box-shadow: 0 0 0 1px rgba(255,255,255,.10); }
+:host([data-theme="dark"]) .pm-note, :host([data-theme="black"]) .pm-note { background: rgba(255,255,255,.07); color: #b3afa6; border-left-color: #b3afa6; }
+:host([data-theme="dark"]) .pm-raw, :host([data-theme="black"]) .pm-raw { background: #2c2a24; border-color: #5c5538; color: #d8b57a; }
+:host([data-theme="dark"]) .ProseMirror pre::before, :host([data-theme="black"]) .ProseMirror pre::before { color: #8f8c86; }
 .find-match { background: rgba(120,170,255,.38); }
 .find-current { background: rgba(60,120,255,.6); }
 .ProseMirror-gapcursor { display: none; pointer-events: none; position: absolute; }
@@ -137,6 +147,11 @@ export class EditView {
   /** The book's styles, as the page uses them (see core/editcss.ts). */
   setCss(css: string): void {
     this.bookStyle.textContent = css;
+  }
+
+  /** The page takes the reader's theme (light, sepia, dark, black). */
+  setTheme(theme: string): void {
+    this.host.dataset.theme = theme;
   }
 
   setZoom(z: number): void {

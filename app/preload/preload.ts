@@ -1,7 +1,7 @@
 // The only bridge between the window and the main process. Every call is one named request; nothing generic is exposed.
 
 import { contextBridge, ipcRenderer } from "electron";
-import type { MenuCommand, PageCounts, PrintProgress, StudioApi } from "../shared/api.ts";
+import type { Appearance, MenuCommand, PageCounts, PrintProgress, StudioApi } from "../shared/api.ts";
 
 const call = <T>(channel: string, ...args: unknown[]): Promise<T> => ipcRenderer.invoke(channel, ...args) as Promise<T>;
 
@@ -30,6 +30,9 @@ const api: StudioApi = {
   outlines: (current) => call("book:outlines", current),
   setBudget: (pages) => call("book:set-budget", pages),
   setKnown: (file, known) => call("book:set-known", file, known),
+  appearance: () => call("appearance:get"),
+  setAppearance: (change) => call("appearance:set", change),
+  onAppearance: (cb) => subscribe<[Appearance]>("appearance", cb),
   editCss: () => call("style:edit"),
   exportBook: (kind, file) => call("export:run", kind, file),
   onExportProgress: (cb) => subscribe<[string]>("export:progress", cb),

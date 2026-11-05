@@ -99,6 +99,14 @@ export type FileResult = { ok: true; file: string } | { ok: false; message: stri
 
 export type { FormatCommand };
 
+export type Theme = "light" | "sepia" | "dark" | "black" | "system";
+
+export interface Appearance {
+  theme: Theme;
+  /** 0 to 1: how strong the warm eye-comfort tint is. */
+  warmth: number;
+}
+
 export type ExportKind = "epub" | "html" | "chapter-pdf" | "all-pdf";
 
 export type ExportOutcome = { ok: true; message: string } | { ok: false; cancelled?: boolean; message: string };
@@ -162,6 +170,10 @@ export interface StudioApi {
   allNotes(current: { file: string; text: string } | null): Promise<ChapterNotes[]>;
   /** Flashcards from every chapter that is not marked as known. */
   studyCards(current: { file: string; text: string } | null): Promise<ChapterCards[]>;
+  appearance(): Promise<Appearance>;
+  /** Change the theme and/or the warm tint; the new state is returned (and every window is told). */
+  setAppearance(change: Partial<Appearance>): Promise<Appearance>;
+  onAppearance(cb: (a: Appearance) => void): () => void;
   /** The book's page styles, made fit to style the Edit view. */
   editCss(): Promise<string>;
   /** Write the book (or a chapter) in another shape. Asks where to put it; `file` is the open chapter, for "chapter-pdf". */
