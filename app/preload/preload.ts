@@ -1,7 +1,7 @@
 // The only bridge between the window and the main process. Every call is one named request; nothing generic is exposed.
 
 import { contextBridge, ipcRenderer } from "electron";
-import type { Appearance, MenuCommand, PageCounts, PrintProgress, StudioApi } from "../shared/api.ts";
+import type { Appearance, MenuCommand, PageCounts, PrintProgress, ReadingSnapshot, StudioApi } from "../shared/api.ts";
 
 const call = <T>(channel: string, ...args: unknown[]): Promise<T> => ipcRenderer.invoke(channel, ...args) as Promise<T>;
 
@@ -63,6 +63,7 @@ const api: StudioApi = {
   onPrintProgress: (cb) => subscribe<[PrintProgress]>("print:progress", cb),
   onQueryClose: (cb) => subscribe<[]>("window:query-close", cb),
   onOpenFolder: (cb) => subscribe<[string]>("open-folder", cb),
+  reportReading: (state: ReadingSnapshot) => call("reading:state", state),
 };
 
 contextBridge.exposeInMainWorld("studio", api);

@@ -159,6 +159,31 @@ Tips from using it this way:
   edit: press **Print PDF**.
 - Any assistant that can edit files works the same way, because the protocol is plain text. Claude Code is the one this was built with.
 
+### Let the assistant read along (optional MCP server)
+
+By default Claude Code reads your book the same way you would — by opening the markdown files. If you would rather it always
+know *what you are looking at right now* — the open chapter, the heading you are on, the words you have selected — Book Studio can
+expose that over [MCP](https://modelcontextprotocol.io). It is **off unless you ask for it**, serves **only your own machine**
+(`127.0.0.1`), and is **read-only**: it answers questions about the open book and never writes.
+
+Start the app with the `BOOK_STUDIO_MCP` flag set, then point Claude Code at it once:
+
+```bash
+# Start Book Studio with the reader server on (any value turns it on; the port defaults to 4319).
+#   macOS / Linux:
+BOOK_STUDIO_MCP=1 open -a "Book Studio"      # or: BOOK_STUDIO_MCP=1 ./Book\ Studio
+#   Windows (PowerShell):
+$env:BOOK_STUDIO_MCP=1; & "$env:LOCALAPPDATA\Programs\book-studio\Book Studio.exe"
+
+# Then register it with Claude Code (once):
+claude mcp add --transport http book-studio http://127.0.0.1:4319/
+```
+
+It offers five read-only tools: `reading_now` (the chapter, view, heading and selection you are on), `current_book` (title,
+author and the chapter list), `chapter_text` (one chapter's markdown, with or without your notes), `book_notes` (every question
+and change request you have left) and `search_book`. Ask Claude things like *"explain the part I'm reading"* or *"answer the notes
+in the chapter I'm on"* and it starts from where you actually are. Set `BOOK_STUDIO_MCP_PORT` to use a port other than 4319.
+
 *Book Studio is an independent open-source project. It is not made by, affiliated with or endorsed by Anthropic. "Claude" and
 "Claude Code" are Anthropic's names; using Claude Code needs your own Anthropic account, which is separate from Book Studio.*
 

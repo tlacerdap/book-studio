@@ -5,7 +5,7 @@ import { chapterId } from "../../core/ids.ts";
 import { openNotes, parseNotes, stripNotes } from "../../core/notes.ts";
 import { outline } from "../../core/notemap.ts";
 import type { SearchHit } from "../../core/search.ts";
-import type { Appearance, BookHints, BookInfo, ExportKind, FormatCommand, MenuCommand, OpenResult, PageCounts, WritingHint } from "../shared/api.ts";
+import type { Appearance, BookHints, BookInfo, ExportKind, FormatCommand, MenuCommand, OpenResult, PageCounts, ReadingSnapshot, WritingHint } from "../shared/api.ts";
 import { askText, openHistory, openPalette, paletteItems } from "./dialogs.ts";
 import { clear, h } from "./dom.ts";
 import { Panel } from "./panel.ts";
@@ -84,7 +84,10 @@ const reading = new ReadingView(viewEls.reading, api, {
     if (target) void openChapter(target.path);
   },
   onOpenExternal: (url) => void api.openExternal(url),
-  onActive: () => renderToolbar(),
+  onActive: () => {
+    renderToolbar();
+    pushReading();
+  },
   onError: (m) => toast(`Could not lay out this chapter: ${m}`),
   onToast: (m) => toast(m),
   onZoom: () => renderToolbar(),
@@ -540,6 +543,7 @@ async function renderWelcome(message?: { text: string; folder?: string }): Promi
   box.append(inner);
   showView("welcome");
   renderToolbar();
+  pushReading();
 }
 
 async function openDialog(): Promise<void> {
@@ -633,6 +637,7 @@ async function showCurrent(): Promise<void> {
     source.setText(doc.text);
     source.focus();
   }
+  pushReading();
 }
 
 function adjacent(step: number): void {
@@ -1446,6 +1451,42 @@ api.onQueryClose(async () => {
 // ------------------------------------------------------------------------------------------------
 // Start
 // ------------------------------------------------------------------------------------------------
+
+// ------------------------------------------------------------------------------------------------
+// Telling the main process what the reader is on, for the optional MCP server (off unless BOOK_STUDIO_MCP is set)
+// ------------------------------------------------------------------------------------------------
+
+/** Where the reader is now: the chapter, the view, the line and nearest heading, and any words selected on the page. */
+function readingSnapshot(): ReadingSnapshot {
+  if (!doc) return { file: null, name: null, view: null, line: null, heading: null, selection: null };
+  const line = view === "reading" ? reading.activeFirstLine() : view === "edit" ? edit.currentLine() : source.cursorLine;
+  let heading: string | null = null;
+  if (typeof line === "number") {
+    for (const hd of outline(doc.text)) {
+      if (hd.line <= line) heading = hd.title;
+      else break;
+    }
+  }
+  let selection: string | null = null;
+  if (view === "reading") selection = reading.selectedText();
+  else {
+    try {
+      const s = window.getSelection()?.toString().trim();
+      selection = s ? s.slice(0, 4000) : null;
+    } catch {
+      /* no selection to read */
+    }
+  }
+  return { file: doc.file, name: doc.name, view, line: typeof line === "number" ? line : null, heading, selection };
+}
+
+let readingTimer: number | undefined;
+/** Send the snapshot, coalesced so a burst of scrolls or selection changes is one message. */
+function pushReading(): void {
+  window.clearTimeout(readingTimer);
+  readingTimer = window.setTimeout(() => void api.reportReading(readingSnapshot()), 250);
+}
+document.addEventListener("selectionchange", () => pushReading());
 
 async function start(): Promise<void> {
   applyAppearance(await api.appearance());

@@ -329,6 +329,8 @@ export class ReadingView {
         this.clickAt = m.src ? { src: String(m.src), y: Number(m.y) } : null;
         this.setActive((m.src as string | null) ?? null);
         this.sendMarks();
+        // Tell the window the selection changed even when the active block did not, so the MCP snapshot stays current.
+        this.hooks.onActive(this.active);
         break;
       case "key": {
         // The page kept the keyboard focus (the reader clicked on it): its Q, E, ? and Esc still reach an open note box.
@@ -804,6 +806,12 @@ export class ReadingView {
     const bottom = b.bottom * this.zoom;
     const view0 = this.scroller.scrollTop;
     if (top < view0 + 30 || bottom > view0 + this.scroller.clientHeight - 30) this.scroller.scrollTop = Math.max(0, top - this.scroller.clientHeight * 0.3);
+  }
+
+  /** The words the reader has selected on the page right now, if any (for the optional MCP server). */
+  selectedText(): string | null {
+    const text = this.selection?.text?.trim();
+    return text ? text : null;
   }
 
   /** The first line of the file for the active block, so the source view can open where the reader was. */

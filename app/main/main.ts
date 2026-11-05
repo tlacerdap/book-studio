@@ -31,7 +31,8 @@ import { PACKAGE_ROOT, STYLES } from "../../core/paths.ts";
 import type { CheckReport } from "../../core/check.ts";
 import { PageCounter, type PageCounts } from "./pagecount.ts";
 import { applyPrintSwitches, renderPdf } from "../../electron/render-pdf.ts";
-import type { Appearance, BookInfo, ChapterText, ExportKind, ExportOutcome, Theme, MenuCommand, OpenResult, PrintOutcome, UnsavedChoice } from "../shared/api.ts";
+import type { Appearance, BookInfo, ChapterText, ExportKind, ExportOutcome, Theme, MenuCommand, OpenResult, PrintOutcome, ReadingSnapshot, UnsavedChoice } from "../shared/api.ts";
+import { startMcpServer } from "./mcp.ts";
 
 const SCHEME = "bookstudio";
 const APP_ORIGIN = `${SCHEME}://app/`;
@@ -54,6 +55,8 @@ let watcher: fs.FSWatcher | null = null;
 let ownYamlUntil = 0;
 let counter: PageCounter | null = null;
 let painter: DiagramPainter | null = null;
+/** The last thing the window told us the reader is looking at, for the optional MCP server. In memory only. */
+let readingState: ReadingSnapshot & { at: number } = { file: null, name: null, view: null, line: null, heading: null, selection: null, at: 0 };
 
 /** Draw the diagrams of some chapters (every one of the book's when no list is given) before a page is built from them. */
 async function drawDiagrams(texts?: string[]): Promise<void> {
@@ -671,6 +674,19 @@ function registerIpc(): void {
   handle("window:cancel-quit", () => {
     quitting = false;
   });
+  handle("reading:state", (s: ReadingSnapshot) => {
+    const str = (v: unknown, max: number): string | null => (typeof v === "string" ? v.slice(0, max) : null);
+    const view = s && (s.view === "reading" || s.view === "edit" || s.view === "source") ? s.view : null;
+    readingState = {
+      file: str(s?.file, 4096),
+      name: str(s?.name, 512),
+      view,
+      line: typeof s?.line === "number" && Number.isFinite(s.line) ? Math.max(0, Math.floor(s.line)) : null,
+      heading: str(s?.heading, 512),
+      selection: str(s?.selection, 4000),
+      at: Date.now(),
+    };
+  });
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -861,6 +877,11 @@ app.whenReady().then(() => {
   setAppearance(readAppearance());
   if (counter) counter.prepare = (text) => drawDiagrams([text]);
   registerIpc();
+  // Off by default. Set BOOK_STUDIO_MCP to let a local tool (Claude Code) read along over MCP; loopback only, read-only.
+  if (process.env.BOOK_STUDIO_MCP) {
+    const port = Number(process.env.BOOK_STUDIO_MCP_PORT) || 4319;
+    startMcpServer({ version: app.getVersion(), book: () => book, reading: () => readingState }, port);
+  }
   buildMenu();
   createWindow();
   app.on("activate", () => {

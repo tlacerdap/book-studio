@@ -99,6 +99,21 @@ export type FileResult = { ok: true; file: string } | { ok: false; message: stri
 
 export type { FormatCommand };
 
+/** What the reader is looking at right now, sent from the window to the main process for the optional MCP server. */
+export interface ReadingSnapshot {
+  /** Absolute path of the open chapter, or null if none is open. */
+  file: string | null;
+  /** The chapter's file name. */
+  name: string | null;
+  view: "reading" | "edit" | "source" | null;
+  /** 0-based top line in the note-free text, if known. */
+  line: number | null;
+  /** The nearest heading at or above the reader's position. */
+  heading: string | null;
+  /** Text the reader has selected on the page right now, if any. */
+  selection: string | null;
+}
+
 export type Theme = "light" | "sepia" | "dark" | "black" | "system";
 
 export interface Appearance {
@@ -211,4 +226,6 @@ export interface StudioApi {
   onPrintProgress(cb: (p: PrintProgress) => void): () => void;
   onQueryClose(cb: () => void): () => void;
   onOpenFolder(cb: (folder: string) => void): () => void;
+  /** Tell the main process what the reader is looking at now (for the optional MCP server). A no-op when it is off. */
+  reportReading(state: ReadingSnapshot): Promise<void>;
 }
