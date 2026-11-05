@@ -34,7 +34,9 @@ button { font: inherit; color: inherit; }
 
 /* ---- Left panel ------------------------------------------------------------------------------ */
 
-#panel { width: 268px; flex: none; background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 12px 8px 24px; }
+#panel { width: 268px; flex: none; background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; overflow: hidden; }
+#panel-body, #panel-results { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px 24px; }
+#panel-body[hidden], #panel-results[hidden] { display: none; }
 #app.panel-closed #panel { display: none; }
 .panel-book { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 8px 10px; cursor: pointer; }
 .panel-book .t { display: block; font: 400 17px/1.25 var(--font-serif); }
@@ -194,3 +196,26 @@ button { font: inherit; color: inherit; }
 .card.focus { box-shadow: 0 0 0 2px #b8741a; border-color: #b8741a; }
 .card.pulse { animation: card-pulse 0.9s ease-out; }
 @keyframes card-pulse { 0% { box-shadow: 0 0 0 7px rgba(184, 116, 26, 0.45); } 100% { box-shadow: 0 0 0 2px #b8741a; } }
+
+/* Searching the whole book, in the left panel. */
+#panel-search { flex: none; padding: 10px 8px 6px; }
+#panel-search input { width: 100%; padding: 5px 9px; border: 1px solid var(--line); border-radius: 7px; font: inherit; background: #fff; }
+#panel-search input:focus { outline: 2px solid rgba(60, 120, 255, 0.45); outline-offset: 0; border-color: transparent; }
+.search-summary { padding: 6px 4px 0; color: var(--ink-3); font-size: 12px; }
+.sr-group { margin: 2px 0 8px; }
+.sr-head { display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left; border: 0; background: none; padding: 5px 6px; border-radius: 6px; cursor: pointer; font: inherit; }
+.sr-head:hover { background: rgba(0, 0, 0, 0.045); }
+.sr-head .num { color: var(--ink-3); min-width: 16px; font-size: 12px; }
+.sr-head .name { flex: 1; font-weight: 600; font-size: 13px; }
+.sr-head .n { color: var(--ink-3); font-size: 12px; background: rgba(0, 0, 0, 0.06); border-radius: 9px; padding: 0 7px; }
+.sr-group.current .sr-head .name { color: #1b4fd1; }
+.sr-hit { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 4px 6px 5px 28px; border-radius: 6px; cursor: pointer; font: inherit; color: var(--ink-2); }
+.sr-hit:hover { background: rgba(0, 0, 0, 0.045); }
+.sr-hit.active { background: rgba(60, 120, 255, 0.14); }
+.sr-hit .snip { display: block; font-size: 12.5px; line-height: 1.35; overflow-wrap: anywhere; }
+.sr-hit mark { background: rgba(255, 214, 102, 0.75); color: inherit; border-radius: 2px; padding: 0 1px; }
+.sr-hit .where { display: block; font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+.sr-more { margin: 0 0 0 28px; border: 0; background: none; color: #1b4fd1; cursor: pointer; font: inherit; font-size: 12px; padding: 2px 6px; }
+.sr-more:hover { text-decoration: underline; }
+/* Find in this chapter: the count beside the buttons. */
+#findbar .status.count { color: var(--ink-2); min-width: 64px; }

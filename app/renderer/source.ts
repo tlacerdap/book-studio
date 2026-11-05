@@ -4,7 +4,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { markdown } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
-import { openSearchPanel, search, searchKeymap } from "@codemirror/search";
+import { openSearchPanel, search, searchKeymap, SearchQuery, setSearchQuery } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
 import { Decoration, drawSelection, EditorView, keymap, MatchDecorator, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 
@@ -90,6 +90,26 @@ export class SourceView {
 
   openFind(): void {
     openSearchPanel(this.view);
+  }
+
+  /** Fill the editor's search box with some words, so every occurrence is marked. */
+  setSearch(query: string): void {
+    this.view.dispatch({ effects: setSearchQuery.of(new SearchQuery({ search: query, caseSensitive: false })) });
+  }
+
+  /** Go to a 0-based line and select the first occurrence of `query` on it; every other occurrence is marked too. */
+  showMatch(line: number, query: string): void {
+    const doc = this.view.state.doc;
+    const l = doc.line(Math.min(Math.max(1, line + 1), doc.lines));
+    const at = l.text.toLowerCase().indexOf(query.trim().toLowerCase());
+    const from = at >= 0 ? l.from + at : l.from;
+    const to = at >= 0 ? from + query.trim().length : l.from;
+    openSearchPanel(this.view);
+    this.view.dispatch({
+      effects: [setSearchQuery.of(new SearchQuery({ search: query.trim(), caseSensitive: false })), EditorView.scrollIntoView(from, { y: "center" })],
+      selection: { anchor: from, head: to },
+    });
+    this.view.focus();
   }
 
   /** Scroll to a 0-based line and put the cursor at its start. */

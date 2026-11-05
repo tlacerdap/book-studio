@@ -4,11 +4,13 @@
 import { chapterId } from "../../core/ids.ts";
 import { openNotes, parseNotes } from "../../core/notes.ts";
 import { outline } from "../../core/notemap.ts";
+import type { SearchHit } from "../../core/search.ts";
 import type { BookInfo, MenuCommand, OpenResult, PageCounts } from "../shared/api.ts";
 import { clear, h } from "./dom.ts";
 import { Panel } from "./panel.ts";
 import { ReadingView } from "./reading.ts";
 import { ReportPanel } from "./report.ts";
+import { SearchPanel } from "./search.ts";
 import { SourceView } from "./source.ts";
 
 const api = window.studio;
@@ -31,7 +33,7 @@ let view: "reading" | "source" = "reading";
 let busy = false;
 let pageCounts: PageCounts | null = null;
 
-const panelEl = $("panel");
+const panelEl = $("panel-body");
 const reportEl = $("report");
 const viewEls = { reading: $("reading"), source: $("source"), welcome: $("welcome") };
 
@@ -59,7 +61,25 @@ const reading = new ReadingView(viewEls.reading, api, {
     renderToolbar();
   },
   onCopy: (text) => void api.copyText(text).then(() => toast(`Copied. Paste it to Claude Code: ${text}`)),
+  onFound: (count, index) => showFound(count, index),
 });
+
+const searchPanel = new SearchPanel(
+  $("panel-search"),
+  $("panel-results"),
+  {
+    current: () => (doc ? { file: doc.file, text: doc.text } : null),
+    chapterInfo: (file) => {
+      const c = book?.chapters.find((x) => x.path === file);
+      return c ? { num: c.label ? c.label.replace(/^Chapter /, "") : "", title: c.title } : null;
+    },
+    search: (query, current) => api.searchBook(query, current),
+    onOpen: (file, hit, query) => void openHit(file, hit, query),
+    onActive: (on) => {
+      $("panel-body").hidden = on;
+    },
+  },
+);
 
 const source = new SourceView(viewEls.source, {
   onChange: (text) => {
@@ -326,6 +346,7 @@ async function showCurrent(): Promise<void> {
   if (view === "reading") {
     viewEls.reading.scrollTop = 0;
     await reading.show(doc.file, doc.text);
+    if (!findbar.hidden && findInput?.value.trim()) reading.findSet(findInput.value);
   } else {
     source.setText(doc.text);
     source.focus();
@@ -376,6 +397,7 @@ async function refreshBook(): Promise<void> {
     book = info;
     renderPanel();
     renderToolbar();
+    searchPanel.refresh();
   }
 }
 
@@ -478,31 +500,89 @@ async function onBookChanged(files: string[]): Promise<void> {
 // ------------------------------------------------------------------------------------------------
 
 const findbar = $("findbar");
+let findInput: HTMLInputElement | null = null;
+let findStatus: HTMLElement | null = null;
+let findTimer: number | undefined;
 
-function openFind(): void {
+/** "3 of 12" beside the find box. */
+function showFound(count: number, index: number): void {
+  if (!findStatus) return;
+  findStatus.textContent = count > 0 ? `${index + 1} of ${count}` : findInput?.value.trim() ? "Not found" : "";
+}
+
+/**
+ * The find bar of the reading view: every occurrence is marked on the page, Enter goes to the next one and Shift+Enter to
+ * the one before. In the source view the editor's own search box is used.
+ */
+function openFind(initial?: string, opts: { focus?: boolean } = {}): void {
   if (!doc) return;
-  if (view === "source") return source.openFind();
-  clear(findbar);
-  const input = h("input", { type: "search", placeholder: "Find in this chapter", "aria-label": "Find" });
-  const status = h("span", { class: "status" });
-  const run = async (backwards = false) => {
-    if (!input.value) return;
-    const ok = await reading.find(input.value, backwards);
-    status.textContent = ok ? "" : "Not found";
-  };
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") void run(e.shiftKey);
-    else if (e.key === "Escape") closeFind();
-  });
-  findbar.append(input, h("button", { class: "tb-btn", type: "button", onClick: () => void run(true) }, "Previous"), h("button", { class: "tb-btn", type: "button", onClick: () => void run(false) }, "Next"), status, h("button", { class: "icon-btn", type: "button", "aria-label": "Close find", onClick: closeFind }, "×"));
-  findbar.hidden = false;
-  input.focus();
+  if (view === "source") {
+    if (initial) source.setSearch(initial);
+    return source.openFind();
+  }
+  if (findbar.hidden || !findInput) {
+    clear(findbar);
+    const input = h("input", { type: "search", placeholder: "Find in this chapter", "aria-label": "Find in this chapter" });
+    const status = h("span", { class: "status count", role: "status" });
+    const run = () => reading.findSet(input.value);
+    input.addEventListener("input", () => {
+      window.clearTimeout(findTimer);
+      findTimer = window.setTimeout(run, 100);
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (input.value.trim() && !status.textContent) run();
+        else reading.findStep(e.shiftKey ? -1 : 1);
+      } else if (e.key === "Escape") closeFind();
+    });
+    findbar.append(
+      input,
+      h("button", { class: "tb-btn", type: "button", onClick: () => reading.findStep(-1) }, "Previous"),
+      h("button", { class: "tb-btn", type: "button", onClick: () => reading.findStep(1) }, "Next"),
+      status,
+      h("button", { class: "icon-btn", type: "button", "aria-label": "Close find", onClick: closeFind }, "\u00d7"),
+    );
+    findInput = input;
+    findStatus = status;
+    findbar.hidden = false;
+  }
+  if (initial !== undefined) findInput.value = initial;
+  if (opts.focus !== false) {
+    findInput.focus();
+    findInput.select();
+  }
 }
 
 function closeFind(): void {
   findbar.hidden = true;
   clear(findbar);
+  findInput = null;
+  findStatus = null;
   reading.clearFind();
+}
+
+/**
+ * The reader picked a result of the book-wide search: open that chapter and show the match. The find bar fills with the
+ * same words, so Next and Previous go on through the matches in this chapter.
+ */
+async function openHit(file: string, hit: SearchHit | null, query: string): Promise<void> {
+  await openChapter(file);
+  if (!doc || doc.file !== file) return; // the reader cancelled leaving their unsaved edits
+  if (view === "source") {
+    if (hit && hit.ordinal >= 0) source.showMatch(hit.line - 1, query);
+    else source.goToLine(0);
+    return;
+  }
+  openFind(query, { focus: false });
+  if (hit && hit.ordinal < 0) {
+    // the chapter's title: it sits above the page text, so just show the top of the chapter
+    reading.clearFind();
+    viewEls.reading.scrollTop = 0;
+    if (findStatus) findStatus.textContent = "";
+    return;
+  }
+  reading.findSet(query, hit && hit.ordinal >= 0 ? { ordinal: hit.ordinal, ctx: hit.ctx } : null);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -555,6 +635,10 @@ api.onMenu((cmd: MenuCommand) => {
       break;
     case "find":
       openFind();
+      break;
+    case "find-book":
+      if ($("app").classList.contains("panel-closed")) togglePanel();
+      searchPanel.focus();
       break;
     case "prev-chapter":
       adjacent(-1);

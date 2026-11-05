@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
+import { searchFiles, type SearchResult } from "../../core/search.ts";
 import { bookEvidence, chapterFiles, ConfigError, isBook, loadBook, outputPdf, writeDefaultBookYaml, type BookConfig } from "../../core/config.ts";
 import { listChapters } from "../../core/book.ts";
 import { atomicWrite } from "../../core/fsutil.ts";
@@ -297,6 +298,19 @@ function registerIpc(): void {
     if (/^https?:\/\//i.test(String(url))) await shell.openExternal(String(url));
   });
   handle("app:version", () => app.getVersion());
+  handle("search:book", (query: string, current: { file: string; text: string } | null): SearchResult => {
+    const b = requireBook();
+    const own = current && typeof current.file === "string" && typeof current.text === "string" ? current : null;
+    const files = chapterFiles(b).map((f) => {
+      if (own && own.file === f) return { file: f, text: own.text };
+      try {
+        return { file: f, text: fs.readFileSync(f, "utf8") };
+      } catch {
+        return { file: f, text: "" };
+      }
+    });
+    return searchFiles(files, String(query).slice(0, 200));
+  });
   handle("clipboard:write", (text: string) => clipboard.writeText(String(text).slice(0, 2000)));
   handle("pages:get", (): PageCounts => counter?.state() ?? { counts: {}, pending: 0, chapters: 0 });
   handle("pages:known", (file: string, pages: number) => {
@@ -368,7 +382,8 @@ function buildMenu(): void {
         { role: "selectAll" },
         { type: "separator" },
         { label: "Add Note", accelerator: "CmdOrCtrl+Shift+M", click: () => send("add-note") },
-        { label: "Find", accelerator: "CmdOrCtrl+F", click: () => send("find") },
+        { label: "Find in Chapter", accelerator: "CmdOrCtrl+F", click: () => send("find") },
+        { label: "Find in Book", accelerator: "CmdOrCtrl+Shift+F", click: () => send("find-book") },
       ],
     },
     {

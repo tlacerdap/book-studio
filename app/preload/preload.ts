@@ -25,6 +25,7 @@ const api: StudioApi = {
   openExternal: (url) => call("external:open", url),
   copyText: (text) => call("clipboard:write", text),
   version: () => call("app:version"),
+  searchBook: (query, current) => call("search:book", query, current),
   pageCounts: () => call("pages:get"),
   pagesKnown: (file, pages) => call("pages:known", file, pages),
   print: () => call("print:run"),

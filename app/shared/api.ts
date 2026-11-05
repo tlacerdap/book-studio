@@ -3,6 +3,7 @@
 import type { ChapterSummary } from "../../core/book.ts";
 import type { Problem } from "../../core/print.ts";
 import type { CheckReport } from "../../core/check.ts";
+import type { SearchResult } from "../../core/search.ts";
 
 export interface BookInfo {
   root: string;
@@ -50,6 +51,7 @@ export type MenuCommand =
   | "add-note"
   | "toggle-panel"
   | "find"
+  | "find-book"
   | "prev-chapter"
   | "next-chapter"
   | "print"
@@ -73,6 +75,8 @@ export interface StudioApi {
   prepareReading(file: string, text: string): Promise<{ url: string }>;
   openExternal(url: string): Promise<void>;
   copyText(text: string): Promise<void>;
+  /** Search every chapter of the book for some words. `current` is the open chapter as the editor holds it (it may have unsaved edits). */
+  searchBook(query: string, current: { file: string; text: string } | null): Promise<SearchResult>;
   /** The version of the app that is running, so a reader can tell which build they have. */
   version(): Promise<string>;
   pageCounts(): Promise<PageCounts>;

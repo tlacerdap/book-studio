@@ -21,6 +21,8 @@ export interface ReadingHooks {
   onPages(pages: number): void;
   /** Put text on the clipboard. */
   onCopy(text: string): void;
+  /** How many times the searched words occur on the page, and which one is the current one (-1 if none). */
+  onFound(count: number, index: number): void;
 }
 
 interface Block extends BlockRange {
@@ -91,7 +93,9 @@ export class ReadingView {
   private liveEditing: Editing = null;
   private liveBox: { choose(k: NoteKind): void; cancel(): void } | null = null;
   private ready = false;
-  private findWaiter: ((r: { found: boolean; y: number }) => void) | null = null;
+  /** A search made before the page was laid out: it is run as soon as the page is ready. */
+  private pendingFind: { query: string; ordinal: number | null; ctx: string | null } | null = null;
+  private findQuery = "";
   private pendingScroll: number | null = null;
   private renderToken = 0;
   private wrap: HTMLElement;
@@ -280,6 +284,11 @@ export class ReadingView {
         if (this.pendingScroll !== null) this.scroller.scrollTop = this.pendingScroll;
         this.pendingScroll = null;
         this.drawNotes();
+        if (this.pendingFind) {
+          const f = this.pendingFind;
+          this.pendingFind = null;
+          this.sendFind(f.query, f.ordinal, f.ctx);
+        }
         break;
       }
       case "error":
@@ -314,10 +323,12 @@ export class ReadingView {
       case "open-external":
         this.hooks.onOpenExternal(String(m.url));
         break;
-      case "found":
-        this.findWaiter?.({ found: !!m.found, y: Number(m.y) });
-        this.findWaiter = null;
+      case "found": {
+        const index = Number(m.index);
+        if (index >= 0) this.ensureVisible(Number(m.y) * this.zoom);
+        this.hooks.onFound(Number(m.count), index);
         break;
+      }
     }
   }
 
@@ -737,18 +748,33 @@ export class ReadingView {
     return lineMap[first] ?? null;
   }
 
-  async find(query: string, backwards = false): Promise<boolean> {
-    if (!this.ready || !query) return false;
-    const result = await new Promise<{ found: boolean; y: number }>((resolve) => {
-      this.findWaiter = resolve;
-      this.post({ type: "find", query, backwards });
-      setTimeout(() => resolve({ found: false, y: 0 }), 1500);
-    });
-    if (result.found) this.ensureVisible(result.y * this.zoom);
-    return result.found;
+  /**
+   * Mark every occurrence of `query` on the page and go to one: the one a book-wide search result pointed at when
+   * `ordinal` is given, else the first at or below what is on screen.
+   */
+  findSet(query: string, at: { ordinal: number; ctx: string } | null = null): void {
+    this.findQuery = query;
+    if (!query.trim()) return this.clearFind();
+    if (!this.ready) {
+      this.pendingFind = { query, ordinal: at?.ordinal ?? null, ctx: at?.ctx ?? null };
+      return;
+    }
+    this.sendFind(query, at?.ordinal ?? null, at?.ctx ?? null);
+  }
+
+  private sendFind(query: string, ordinal: number | null, ctx: string | null): void {
+    this.post({ type: "find-set", query, ordinal, ctx, fromY: this.scroller.scrollTop / this.zoom });
+  }
+
+  /** Go to the next (1) or previous (-1) occurrence. */
+  findStep(delta: number): void {
+    this.post({ type: "find-step", delta });
   }
 
   clearFind(): void {
-    this.post({ type: "clear-selection" });
+    this.findQuery = "";
+    this.pendingFind = null;
+    this.post({ type: "find-clear" });
+    this.hooks.onFound(0, -1);
   }
 }

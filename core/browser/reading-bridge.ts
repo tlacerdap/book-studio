@@ -2,6 +2,8 @@
 // the app: it reports where each block of the chapter is, and what the reader clicks or selects; the app tells it which
 // blocks carry notes. Messages go to the parent window only, and only the parent's messages are accepted.
 
+import { contextAround, normChar as norm, normText, occurrences } from "../textnorm.ts";
+
 type Quote = { id: number; src: string; text: string; done?: boolean };
 type Whole = { id: number; src: string; done: boolean };
 type Block = { src: string; first: number; last: number; top: number; bottom: number; page: number };
@@ -9,7 +11,9 @@ type Block = { src: string; first: number; last: number; top: number; bottom: nu
 type ToFrame =
   | { type: "mark"; notes: Record<string, "open" | "answered">; active: string | null; quotes: Quote[]; wholes: Whole[]; pending: { src: string; text: string } | null; focus: number[] }
   | { type: "scroll-to"; y: number }
-  | { type: "find"; query: string; backwards: boolean }
+  | { type: "find-set"; query: string; ordinal: number | null; ctx: string | null; fromY: number }
+  | { type: "find-step"; delta: number }
+  | { type: "find-clear" }
   | { type: "clear-selection" };
 
 const parentWin = window.parent;
@@ -83,28 +87,6 @@ interface Flat {
   rawOf: number[];
   nodes: FlatNode[];
   index: Map<Node, number>;
-}
-
-function norm(c: string): string {
-  if (/[\u2018\u2019\u201c\u201d"']/.test(c)) return "'";
-  const l = c.toLowerCase();
-  return l.length === 1 ? l : c;
-}
-
-/** A string run through the same normalising as the page text, so it can be searched for. */
-function normText(t: string): string {
-  let out = "";
-  let space = true;
-  for (const ch of t) {
-    if (/\s/.test(ch)) {
-      if (!space) out += " ";
-      space = true;
-    } else {
-      out += norm(ch);
-      space = false;
-    }
-  }
-  return out.trim();
 }
 
 let cached: Flat | null = null;
@@ -293,6 +275,63 @@ function highlight(quotes: Quote[], wholes: Whole[], pending: { src: string; tex
   set("note-focus", 3, [...quoted.filter((q) => focus.includes(q.id)).flatMap((q) => q.ranges), ...blocks.filter((b) => focus.includes(b.id)).flatMap((b) => wholeRanges(b.src))]);
 }
 
+// ---- find on the page ---------------------------------------------------------------------------------
+//
+// Every occurrence of the searched words is marked, the current one more strongly. The count and the position of the
+// current one go back to the app, which shows "3 of 12" and scrolls there.
+
+let finding: { starts: number[]; len: number; current: number } | null = null;
+
+function showFind(): void {
+  const css = (window as unknown as { CSS?: { highlights?: Map<string, unknown> } }).CSS;
+  const HL = (window as unknown as { Highlight?: new (...r: Range[]) => { priority: number } }).Highlight;
+  if (!css?.highlights || !HL) return;
+  const set = (name: string, priority: number, ranges: Range[]): void => {
+    const h = new HL(...ranges);
+    h.priority = priority;
+    css.highlights!.set(name, h);
+  };
+  if (!finding) {
+    set("find-match", 4, []);
+    set("find-current", 5, []);
+    return void send({ type: "found", count: 0, index: -1, y: 0 });
+  }
+  const f = flat();
+  const { starts, len, current } = finding;
+  set("find-match", 4, starts.flatMap((s, i) => (i === current ? [] : rangesFor(f, s, s + len))));
+  const now = rangesFor(f, starts[current], starts[current] + len);
+  set("find-current", 5, now);
+  const top = now[0]?.getBoundingClientRect().top ?? 0;
+  send({ type: "found", count: starts.length, index: current, y: top + window.scrollY });
+}
+
+/** Which match to start on: the one a book-wide search result pointed at, else the first one at or below `fromY`. */
+function pickMatch(f: Flat, starts: number[], len: number, ordinal: number | null, ctx: string | null, fromY: number): number {
+  if (ordinal !== null) {
+    const ctxOf = (i: number): string => contextAround(f.text, starts[i], starts[i] + len);
+    if (ctx !== null) {
+      if (ordinal >= 0 && ordinal < starts.length && ctxOf(ordinal) === ctx) return ordinal;
+      let best = -1;
+      for (let i = 0; i < starts.length; i++) if (ctxOf(i) === ctx && (best < 0 || Math.abs(i - ordinal) < Math.abs(best - ordinal))) best = i;
+      if (best >= 0) return best;
+    }
+    return Math.min(Math.max(ordinal, 0), starts.length - 1);
+  }
+  for (let i = 0; i < starts.length; i++) {
+    const r = rangesFor(f, starts[i], starts[i] + len)[0];
+    if (r && r.getBoundingClientRect().top + window.scrollY >= fromY - 10) return i;
+  }
+  return 0;
+}
+
+function findSet(query: string, ordinal: number | null, ctx: string | null, fromY: number): void {
+  const f = flat();
+  const needle = normText(query);
+  const starts = needle ? occurrences(f.text, needle) : [];
+  finding = starts.length ? { starts, len: needle.length, current: pickMatch(f, starts, needle.length, ordinal, ctx, fromY) } : null;
+  showFind();
+}
+
 function mark(notes: Record<string, "open" | "answered">, active: string | null): void {
   for (const el of document.querySelectorAll<HTMLElement>("[data-note], [data-active]")) {
     delete el.dataset.note;
@@ -315,12 +354,15 @@ window.addEventListener("message", (e: MessageEvent) => {
   }
   else if (m.type === "scroll-to") window.scrollTo({ top: m.y });
   else if (m.type === "clear-selection") window.getSelection()?.removeAllRanges();
-  else if (m.type === "find") {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).find(m.query, false, m.backwards, true, false, false, false);
-    const sel = window.getSelection();
-    const r = sel && sel.rangeCount ? sel.getRangeAt(0).getBoundingClientRect() : null;
-    send({ type: "found", found: !!r && (r.width > 0 || r.height > 0), y: r ? r.top + window.scrollY : 0 });
+  else if (m.type === "find-set") findSet(m.query, m.ordinal, m.ctx, m.fromY);
+  else if (m.type === "find-step") {
+    if (finding) {
+      finding.current = (finding.current + m.delta + finding.starts.length) % finding.starts.length;
+      showFind();
+    }
+  } else if (m.type === "find-clear") {
+    finding = null;
+    showFind();
   }
 });
 
