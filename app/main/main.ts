@@ -7,7 +7,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 import { searchFiles, type SearchResult } from "../../core/search.ts";
-import { bookEvidence, chapterFiles, ConfigError, isBook, loadBook, outputPdf, writeDefaultBookYaml, type BookConfig } from "../../core/config.ts";
+import { bookEvidence, chapterFiles, ConfigError, isBook, loadBook, outputPdf, addTerm, setKnown, setPageBudget, writeDefaultBookYaml, type BookConfig } from "../../core/config.ts";
+import { checkText } from "../../core/writing-rules.ts";
 import { listChapters } from "../../core/book.ts";
 import { ChapterError, createChapter, linksTo, moveChapter, renameChapter } from "../../core/chapters.ts";
 import { lineDiff, listSnapshots, readSnapshot, snapshot } from "../../core/history.ts";
@@ -38,6 +39,8 @@ let allowClose = false;
 let quitting = false;
 let printing = false;
 let watcher: fs.FSWatcher | null = null;
+/** Until this time a change to book.yaml is the app's own (the budget, a known chapter) and moves no page. */
+let ownYamlUntil = 0;
 let counter: PageCounter | null = null;
 
 // ------------------------------------------------------------------------------------------------
@@ -135,7 +138,7 @@ function remember(b: BookConfig): void {
 // ------------------------------------------------------------------------------------------------
 
 function bookInfo(b: BookConfig): BookInfo {
-  return { root: b.root, title: b.title, author: b.author, output: b.output, chapters: listChapters(b, chapterFiles(b)) };
+  return { root: b.root, title: b.title, author: b.author, output: b.output, chapters: listChapters(b, chapterFiles(b)), pages: b.pages, known: b.known };
 }
 
 function watch(b: BookConfig): void {
@@ -147,6 +150,7 @@ function watch(b: BookConfig): void {
       if (!name) return;
       const rel = name.toString();
       if (/(^|[\\/])(build|\.git|node_modules)([\\/]|$)/.test(rel) || /\.tmp$/.test(rel) || /(^|[\\/])\.DS_Store$/.test(rel)) return;
+      if (rel === "book.yaml" && Date.now() < ownYamlUntil) return;
       pending.add(rel);
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
@@ -164,6 +168,25 @@ function watch(b: BookConfig): void {
 }
 
 const historyStore = () => app.getPath("userData");
+
+/**
+ * The writing hints of one chapter. The acronym check needs the chapters before it (an acronym explained there is
+ * explained for good), so they are read in book order, with the open chapter as the editor holds it.
+ */
+function hintsFor(b: BookConfig, file: string, text: string | null, current: { file: string; text: string } | null) {
+  const read = (f: string): string => {
+    if (current && current.file === f) return String(current.text);
+    try {
+      return fs.readFileSync(f, "utf8");
+    } catch {
+      return "";
+    }
+  };
+  const files = chapterFiles(b);
+  const at = files.indexOf(file);
+  const earlier = files.slice(0, Math.max(0, at)).map(read).join("\n");
+  return checkText(text ?? read(file), { rules: b.rules, terms: b.terms }, earlier);
+}
 
 /** Remember this text as a version of the chapter. Losing a version must never get in the way of saving. */
 function keepVersion(file: string, text: string, force = false): void {
@@ -366,6 +389,38 @@ function registerIpc(): void {
     const text = readSnapshot(historyStore(), b.root, f, String(id));
     keepVersion(f, fs.readFileSync(f, "utf8"), true); // the version being replaced stays in the history
     return text;
+  });
+  handle("book:set-budget", (pages: number | null) => {
+    const b = requireBook();
+    ownYamlUntil = Date.now() + 2500;
+    setPageBudget(b, pages === null ? null : Math.round(Number(pages)));
+    book = loadBook(b.root);
+    return bookInfo(book);
+  });
+  handle("book:set-known", (file: string, known: boolean) => {
+    const b = requireBook();
+    ownYamlUntil = Date.now() + 2500;
+    setKnown(b, chapterPath(String(file)), !!known);
+    book = loadBook(b.root);
+    return bookInfo(book);
+  });
+  handle("book:add-term", (term: string) => {
+    const b = requireBook();
+    ownYamlUntil = Date.now() + 2500;
+    addTerm(b, String(term).slice(0, 40));
+    book = loadBook(b.root);
+    return bookInfo(book);
+  });
+  handle("rules:check", (current: { file: string; text: string }) => {
+    const b = requireBook();
+    const f = chapterPath(String(current.file));
+    return hintsFor(b, f, String(current.text), null);
+  });
+  handle("rules:book", (current: { file: string; text: string } | null) => {
+    const b = requireBook();
+    const out: { file: string; hints: ReturnType<typeof hintsFor> }[] = [];
+    for (const f of chapterFiles(b)) out.push({ file: f, hints: hintsFor(b, f, current && current.file === f ? String(current.text) : null, current) });
+    return out.filter((x) => x.hints.length);
   });
   handle("book:outlines", (current: { file: string; text: string } | null) => {
     const b = requireBook();

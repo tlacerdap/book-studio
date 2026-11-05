@@ -12,6 +12,25 @@ export interface BookInfo {
   author: string;
   output: string;
   chapters: ChapterSummary[];
+  /** The page budget from book.yaml, or null. */
+  pages: number | null;
+  /** File names of the chapters marked as known (left out of the PDF). */
+  known: string[];
+}
+
+/** A finding about the writing: where, and what to tell the author. */
+export interface WritingHint {
+  line: number;
+  column: number;
+  length: number;
+  text: string;
+  kind: "rule" | "term";
+  message: string;
+}
+
+export interface BookHints {
+  file: string;
+  hints: WritingHint[];
 }
 
 export type OpenResult =
@@ -112,6 +131,16 @@ export interface StudioApi {
   /** The text of an old version. The version it replaces is kept in the history. */
   historyRestore(file: string, id: string): Promise<string>;
   outlines(current: { file: string; text: string } | null): Promise<OutlineEntry[]>;
+  /** The page budget; null removes it. */
+  setBudget(pages: number | null): Promise<BookInfo | null>;
+  /** Mark a chapter as known (left out of the PDF) or not. */
+  setKnown(file: string, known: boolean): Promise<BookInfo | null>;
+  /** The reader knows this word: the checks stop asking for an explanation of it. */
+  addTerm(term: string): Promise<BookInfo | null>;
+  /** Writing hints for a chapter, as the editor holds it. */
+  checkWriting(current: { file: string; text: string }): Promise<WritingHint[]>;
+  /** Writing hints for every chapter. */
+  checkBookWriting(current: { file: string; text: string } | null): Promise<BookHints[]>;
   writeChapter(file: string, text: string): Promise<{ mtimeMs: number }>;
   prepareReading(file: string, text: string): Promise<{ url: string }>;
   openExternal(url: string): Promise<void>;

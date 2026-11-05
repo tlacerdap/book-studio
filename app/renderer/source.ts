@@ -5,7 +5,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import { openSearchPanel, search, searchKeymap, SearchQuery, setSearchQuery } from "@codemirror/search";
-import { EditorState } from "@codemirror/state";
+import { EditorState, StateEffect, StateField } from "@codemirror/state";
 import { formatEdit, type FormatCommand } from "../../core/format.ts";
 import { Decoration, drawSelection, EditorView, keymap, MatchDecorator, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 
@@ -36,6 +36,28 @@ const noteMarks = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations },
 );
 
+/** Words the writing checks found: marked with a wavy line, with the reason as a tooltip. */
+const setHintMarks = StateEffect.define<{ from: number; to: number; message: string }[]>();
+const hintMarks = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(value, tr) {
+    value = value.map(tr.changes);
+    for (const e of tr.effects) {
+      if (e.is(setHintMarks)) {
+        value = Decoration.set(
+          e.value
+            .filter((m) => m.to > m.from && m.to <= tr.state.doc.length)
+            .map((m) => Decoration.mark({ class: "cm-hint", attributes: { title: m.message } }).range(m.from, m.to))
+            .sort((a, b) => a.from - b.from),
+          true,
+        );
+      }
+    }
+    return value;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
 export class SourceView {
   private view: EditorView;
   private muted = false;
@@ -53,6 +75,7 @@ export class SourceView {
           syntaxHighlighting(highlight),
           search({ top: true }),
           noteMarks,
+          hintMarks,
           keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
           EditorView.updateListener.of((u) => {
             if (u.docChanged && !this.muted) hooks.onChange(u.state.doc.toString());
@@ -89,6 +112,18 @@ export class SourceView {
 
   focus(): void {
     this.view.focus();
+  }
+
+  /** Mark the words the writing checks found. Lines and columns are 0-based. */
+  setHints(hints: { line: number; column: number; length: number; message: string }[]): void {
+    const doc = this.view.state.doc;
+    const marks = hints
+      .filter((h) => h.line >= 0 && h.line < doc.lines)
+      .map((h) => {
+        const l = doc.line(h.line + 1);
+        return { from: l.from + h.column, to: Math.min(l.to, l.from + h.column + h.length), message: h.message };
+      });
+    this.view.dispatch({ effects: setHintMarks.of(marks) });
   }
 
   get hasFocus(): boolean {

@@ -67,7 +67,9 @@ export async function buildPdf(book: BookConfig, opts: BuildOptions = {}): Promi
   } catch (e) {
     throw new BuildError(`--chapters: ${(e as Error).message}`);
   }
-  if (!files.length) throw new BuildError(`no chapter files match \`chapters: ${book.chapters}\` in ${book.root}`);
+  if (!files.length) {
+    throw new BuildError(book.known.length ? "every chapter is marked as known, so there is nothing to print. Unmark one first." : `no chapter files match \`chapters: ${book.chapters}\` in ${book.root}`);
+  }
   let chapters;
   try {
     chapters = readChapters(book, files);

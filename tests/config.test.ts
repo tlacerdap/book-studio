@@ -48,7 +48,7 @@ describe("book.yaml", () => {
   });
 
   it("rejects unknown keys, naming them all, sorted", () => {
-    expect(() => loadBook(bookWith(CASES["two unknown keys"]))).toThrow(/unknown setting\(s\) alpha, zeta\. Known: title, subtitle, author, date, language, chapters, output, index\./);
+    expect(() => loadBook(bookWith(CASES["two unknown keys"]))).toThrow(/unknown setting\(s\) alpha, zeta\. Known: title, subtitle, author, date, language, chapters, output, index, pages, known, rules, terms\./);
   });
 
   it("says what is wrong in plain words", () => {

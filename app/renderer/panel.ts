@@ -12,6 +12,8 @@ export interface PanelHooks {
   onMoveChapter(step: -1 | 1): void;
   onRenameChapter(): void;
   onDeleteChapter(): void;
+  onBudget(): void;
+  onToggleKnown(): void;
 }
 
 export interface OutlineItem {
@@ -28,17 +30,35 @@ export class Panel {
     private hooks: PanelHooks,
   ) {}
 
-  /** "660 pages" for the whole book, or how far the counting has got. */
-  private length(pages: PageCounts | null, chapters: number): HTMLElement | null {
+  /** "114 of 126 pages" for the whole book (the chapters marked as known are not in the PDF, so they do not count), or how far the counting has got. */
+  private length(book: BookInfo, pages: PageCounts | null): HTMLElement | null {
+    const chapters = book.chapters.length;
     if (!pages || !chapters) return null;
     const counted = Object.keys(pages.counts).length;
-    const total = Object.values(pages.counts).reduce((a, b) => a + b, 0);
+    const inBook = book.chapters.filter((c) => !book.known.includes(c.file));
+    const total = inBook.reduce((a, c) => a + (pages.counts[c.path] ?? 0), 0);
     const done = pages.pending === 0 && counted >= chapters;
+    const limit = book.pages;
+    const over = limit !== null && total > limit;
+    const left = limit === null ? 0 : limit - total;
+    const note = book.known.length ? `, ${book.known.length} known left out` : "";
     return h(
       "div",
-      { class: "length", title: "Numbered pages, from the first chapter to the end. The PDF also has a cover and the contents." },
-      h("b", {}, done ? `${total} pages` : `${total}+ pages`),
-      h("span", {}, done ? ` in ${chapters} chapters` : ` so far, counting ${counted} of ${chapters}...`),
+      { class: `length${over ? " over" : ""}` },
+      h(
+        "button",
+        { class: "length-main", type: "button", title: "Numbered pages, from the first chapter to the end (the PDF also has a cover and the contents). Click to set the page limit.", onClick: () => this.hooks.onBudget() },
+        h("b", {}, done ? (limit === null ? `${total} pages` : `${total} of ${limit} pages`) : `${total}+ pages`),
+        h("span", {}, done ? ` in ${inBook.length} chapters${note}` : ` so far, counting ${counted} of ${chapters}...`),
+      ),
+      limit !== null && done
+        ? h(
+            "div",
+            { class: "budget", role: "img", "aria-label": over ? `${-left} pages over the limit` : `${left} pages to spare` },
+            h("div", { class: "fill", style: `width:${Math.min(100, Math.round((total / limit) * 100))}%` }),
+          )
+        : null,
+      limit !== null && done ? h("div", { class: "left" }, over ? `${-left} page${-left === 1 ? "" : "s"} over the limit` : `${left} page${left === 1 ? "" : "s"} to spare`) : null,
     );
   }
 
@@ -47,7 +67,7 @@ export class Panel {
     if (!book) return;
     this.root.append(
       h("button", { class: "panel-book", type: "button", title: "Open another book", onClick: () => this.hooks.onOpenBook() }, h("span", { class: "t" }, book.title), book.author ? h("span", { class: "a" }, book.author) : null),
-      ...[this.length(pages, book.chapters.length)].filter((x): x is HTMLElement => !!x),
+      ...[this.length(book, pages)].filter((x): x is HTMLElement => !!x),
       h("button", { class: "new-chapter", type: "button", title: "Add a chapter to the book (Cmd+N)", onClick: () => this.hooks.onNewChapter() }, "+ New chapter"),
     );
     // Consecutive chapters of one Part are grouped under its name; chapters outside every Part stand alone.
@@ -86,10 +106,10 @@ export class Panel {
         body.append(
           h(
             "button",
-            { class: `chapter${current ? " current" : ""}`, type: "button", "data-file": c.file, title: c.file, onClick: () => this.hooks.onOpenChapter(c.path) },
+            { class: `chapter${current ? " current" : ""}${book.known.includes(c.file) ? " known" : ""}`, type: "button", "data-file": c.file, title: c.file, onClick: () => this.hooks.onOpenChapter(c.path) },
             h("span", { class: "num" }, c.label ? c.label.replace(/^Chapter /, "") : ""),
             h("span", { class: "name" }, c.title),
-            pages?.counts[c.path] ? h("span", { class: "pp", title: `${pages.counts[c.path]} pages` }, String(pages.counts[c.path])) : null,
+            book.known.includes(c.file) ? h("span", { class: "known-tag", title: "Marked as known: left out of the PDF" }, "known") : pages?.counts[c.path] ? h("span", { class: "pp", title: `${pages.counts[c.path]} pages` }, String(pages.counts[c.path])) : null,
             count > 0 ? h("span", { class: "badge", title: `${count} open note${count === 1 ? "" : "s"}` }, String(count)) : null,
           ),
         );
@@ -101,6 +121,7 @@ export class Panel {
               { class: "chapter-actions" },
               h("button", { type: "button", title: "Move this chapter up", "aria-label": "Move chapter up", disabled: index === 0, onClick: () => this.hooks.onMoveChapter(-1) }, "\u2191"),
               h("button", { type: "button", title: "Move this chapter down", "aria-label": "Move chapter down", disabled: index === book.chapters.length - 1, onClick: () => this.hooks.onMoveChapter(1) }, "\u2193"),
+              h("button", { type: "button", title: book.known.includes(c.file) ? "Put this chapter back in the PDF" : "You know this chapter: keep the file, leave it out of the PDF", onClick: () => this.hooks.onToggleKnown() }, book.known.includes(c.file) ? "Unmark known" : "Mark as known"),
               h("button", { type: "button", onClick: () => this.hooks.onRenameChapter() }, "Rename"),
               h("button", { type: "button", class: "danger", onClick: () => this.hooks.onDeleteChapter() }, "Delete"),
             ),

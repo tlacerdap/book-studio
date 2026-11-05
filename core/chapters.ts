@@ -3,7 +3,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { chapterFiles, type BookConfig } from "./config.ts";
+import { chapterFiles, renameKnown, type BookConfig } from "./config.ts";
 import { atomicWrite } from "./fsutil.ts";
 
 export class ChapterError extends Error {}
@@ -94,6 +94,7 @@ export function renameChapter(book: BookConfig, file: string, title: string): st
   if (fs.existsSync(target)) throw new ChapterError(`${name} already exists.`);
   fs.renameSync(file, target);
   rewriteLinks(chapterFiles(book), new Map([[path.basename(file), name]]));
+  renameKnown(book, new Map([[path.basename(file), name]]));
   return target;
 }
 
@@ -129,7 +130,9 @@ export function moveChapter(book: BookConfig, file: string, step: -1 | 1): strin
     atomicWrite(targetA, textA.replace(/^# Chapter \d+ - /, `# Chapter ${labelB[1]} - `));
     atomicWrite(targetB, textB.replace(/^# Chapter \d+ - /, `# Chapter ${labelA[1]} - `));
   }
-  rewriteLinks(chapterFiles(book), new Map([[path.basename(a), nameA], [path.basename(b), nameB]]));
+  const renames = new Map([[path.basename(a), nameA], [path.basename(b), nameB]]);
+  rewriteLinks(chapterFiles(book), renames);
+  renameKnown(book, renames);
   return targetA;
 }
 

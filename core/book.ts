@@ -70,7 +70,8 @@ function romanToInt(s: string): number {
 /** All chapter files, or the subset named by `spec`: numbers (7), ranges (0-3), commas, file names. */
 export function selectChapters(book: BookConfig, spec?: string[]): string[] {
   const files = chapterFiles(book);
-  if (!spec || !spec.length) return files;
+  // Without a choice the whole book is meant, minus the chapters the reader has marked as known.
+  if (!spec || !spec.length) return files.filter((f) => !book.known.includes(path.basename(f)));
   const wanted = new Set<string>();
   for (let item of spec.join(",").split(",")) {
     item = item.trim();

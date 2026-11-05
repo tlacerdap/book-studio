@@ -5,7 +5,7 @@ import { chapterId } from "../../core/ids.ts";
 import { openNotes, parseNotes, stripNotes } from "../../core/notes.ts";
 import { outline } from "../../core/notemap.ts";
 import type { SearchHit } from "../../core/search.ts";
-import type { BookInfo, FormatCommand, MenuCommand, OpenResult, PageCounts } from "../shared/api.ts";
+import type { BookHints, BookInfo, FormatCommand, MenuCommand, OpenResult, PageCounts, WritingHint } from "../shared/api.ts";
 import { askText, openHistory, openPalette, paletteItems } from "./dialogs.ts";
 import { clear, h } from "./dom.ts";
 import { Panel } from "./panel.ts";
@@ -52,6 +52,8 @@ let autosaveOn = stored("autosave") !== "0";
 let saving = false;
 let saveTimer: number | undefined;
 let previewTimer: number | undefined;
+let hints: WritingHint[] = [];
+let checkTimer: number | undefined;
 /** True while a chapter is being renamed, moved or deleted, so the file changes that causes are not taken for outside edits. */
 let restructuring = false;
 let busy = false;
@@ -69,6 +71,8 @@ const panel = new Panel(panelEl, {
   onMoveChapter: (step) => void moveChapter(step),
   onRenameChapter: () => void renameChapter(),
   onDeleteChapter: () => void deleteChapter(),
+  onBudget: () => void setBudget(),
+  onToggleKnown: () => void toggleKnown(),
 });
 
 const reading = new ReadingView(viewEls.reading, api, {
@@ -119,6 +123,7 @@ const source = new SourceView(viewEls.source, {
     scheduleOutline();
     scheduleAutosave();
     schedulePreview();
+    scheduleCheck();
   },
   onCursor: (line) => {
     if (view !== "split") return;
@@ -382,6 +387,9 @@ async function openChapter(file: string, opts: { skipGuard?: boolean } = {}): Pr
   renderToolbar();
   await showCurrent();
   scrollPanelToCurrent();
+  hints = [];
+  source.setHints([]);
+  void runCheck();
 }
 
 function scrollPanelToCurrent(): void {
@@ -730,10 +738,17 @@ function renderStatus(): void {
   const words = wordsOf(doc.text);
   const minutes = Math.max(1, Math.round(words / 200));
   const state = saving ? "Saving..." : dirty() ? (autosaveOn ? "Unsaved, saving soon..." : "Unsaved") : "Saved";
+  const chapterPages = pageCounts?.counts[doc.file];
   bar.append(
     h("span", { class: "st" }, `${words.toLocaleString()} words`),
     h("span", { class: "st dim", title: "At 200 words a minute" }, `${minutes} min read`),
+    chapterPages ? h("span", { class: "st dim" }, `${chapterPages} page${chapterPages === 1 ? "" : "s"}`) : "",
     h("span", { class: "grow" }),
+    h(
+      "button",
+      { class: `st-btn${hints.length ? " has-hints" : ""}`, type: "button", title: hints.length ? "Open the list of things to look at" : "Nothing to flag in this chapter. Click to check the whole book.", onClick: () => void toggleHints() },
+      hints.length ? `${hints.length} hint${hints.length === 1 ? "" : "s"}` : "No hints",
+    ),
     h("span", { class: `st${dirty() && !autosaveOn ? " warn" : " dim"}` }, state),
     h(
       "button",
@@ -830,6 +845,131 @@ async function gotoPalette(): Promise<void> {
       if (doc && doc.file === item.file && item.kind === "heading") goToLine(item.line);
     })();
   });
+}
+
+/** The page limit of the book (book.yaml's `pages`). */
+async function setBudget(): Promise<void> {
+  if (!book) return;
+  const answer = await askText("Page limit", {
+    initial: book.pages === null ? "" : String(book.pages),
+    confirm: "Set",
+    allowEmpty: true,
+    hint: "How many numbered pages the book should not go beyond. The side panel shows how far you are. Leave it empty for no limit. It is kept in book.yaml.",
+  });
+  if (answer === null) return;
+  const n = answer === "" ? null : Number(answer);
+  if (n !== null && (!Number.isInteger(n) || n < 1 || n > 5000)) return toast("Write a whole number of pages, such as 126.");
+  try {
+    const info = await api.setBudget(n);
+    if (info) book = info;
+    renderPanel();
+    toast(n === null ? "No page limit." : `Page limit: ${n}.`);
+  } catch (e) {
+    toast((e as Error).message);
+  }
+}
+
+/** Keep a chapter's file in the folder but leave it out of the PDF, or put it back. */
+async function toggleKnown(): Promise<void> {
+  if (!doc || !book) return;
+  const name = doc.name;
+  const now = !book.known.includes(name);
+  try {
+    const info = await api.setKnown(doc.file, now);
+    if (info) book = info;
+    renderPanel();
+    renderToolbar();
+    toast(now ? `${name} is marked as known: it stays in the folder and is left out of the PDF.` : `${name} is back in the PDF.`);
+  } catch (e) {
+    toast((e as Error).message);
+  }
+}
+
+// ---- Writing hints --------------------------------------------------------------------------
+
+function scheduleCheck(): void {
+  window.clearTimeout(checkTimer);
+  checkTimer = window.setTimeout(() => void runCheck(), 900);
+}
+
+async function runCheck(): Promise<void> {
+  if (!doc) return;
+  const file = doc.file;
+  try {
+    const found = await api.checkWriting({ file, text: doc.text });
+    if (!doc || doc.file !== file) return;
+    hints = found;
+    source.setHints(found);
+    renderStatus();
+    if (document.getElementById("hints-pop")) void showHints(false);
+  } catch {
+    /* a check that cannot run is not worth an error */
+  }
+}
+
+async function toggleHints(): Promise<void> {
+  if (document.getElementById("hints-pop")) return void document.getElementById("hints-pop")!.remove();
+  await showHints(false);
+}
+
+/** A list of what the checks found: in this chapter, or (on request) in every chapter. */
+async function showHints(whole: boolean): Promise<void> {
+  document.getElementById("hints-pop")?.remove();
+  if (!doc || !book) return;
+  let groups: BookHints[] = [];
+  if (whole) groups = await api.checkBookWriting({ file: doc.file, text: doc.text });
+  else groups = hints.length ? [{ file: doc.file, hints }] : [];
+  const total = groups.reduce((n, g) => n + g.hints.length, 0);
+  const pop = h("div", { id: "hints-pop", role: "dialog", "aria-label": "Writing hints" });
+  pop.append(
+    h(
+      "div",
+      { class: "hp-head" },
+      h("b", {}, whole ? `${total} hint${total === 1 ? "" : "s"} in the whole book` : total ? `${total} hint${total === 1 ? "" : "s"} in this chapter` : "Nothing to flag in this chapter"),
+      h("span", { class: "grow" }),
+      whole ? null : h("button", { class: "tb-btn", type: "button", onClick: () => void showHints(true) }, "Check the whole book"),
+      h("button", { class: "icon-btn", type: "button", "aria-label": "Close", onClick: () => pop.remove() }, "\u00d7"),
+    ),
+    h("p", { class: "small" }, "The book's own rules (the `rules` in book.yaml) and acronyms used before they are explained. Words are underlined in the editor."),
+  );
+  const list = h("div", { class: "hp-list" });
+  for (const g of groups) {
+    const chapter = book.chapters.find((c) => c.path === g.file);
+    if (whole) list.append(h("div", { class: "hp-chapter" }, chapter ? `${chapter.label ? chapter.label.replace(/^Chapter /, "") + "  " : ""}${chapter.title}` : g.file));
+    for (const hint of g.hints) {
+      const go = async () => {
+        if (!doc || doc.file !== g.file) await openChapter(g.file);
+        if (view === "reading") await setView(writingMode);
+        source.goToLine(hint.line);
+        source.focus();
+      };
+      list.append(
+        h(
+          "div",
+          { class: "hp-item" },
+          h("button", { class: "hp-go", type: "button", onClick: () => void go() }, h("span", { class: "hp-word" }, hint.text), h("span", { class: "hp-msg" }, hint.message), h("span", { class: "hp-line" }, `line ${hint.line + 1}`)),
+          hint.kind === "term"
+            ? h(
+                "button",
+                {
+                  class: "hp-skip",
+                  type: "button",
+                  title: `${hint.text} is known to the reader: never ask about it again (kept in book.yaml)`,
+                  onClick: () =>
+                    void api.addTerm(hint.text).then((info) => {
+                      if (info) book = info;
+                      return runCheck().then(() => showHints(whole));
+                    }),
+                },
+                "Ignore",
+              )
+            : null,
+        ),
+      );
+    }
+  }
+  pop.append(list);
+  document.body.append(pop);
 }
 
 async function showHistory(): Promise<void> {

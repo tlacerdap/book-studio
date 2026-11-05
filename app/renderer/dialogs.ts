@@ -30,14 +30,14 @@ function overlay(label: string, onClose: () => void): { box: HTMLElement; close(
 }
 
 /** Ask for one line of text. Resolves to the text, or null if the reader cancelled. */
-export function askText(title: string, opts: { initial?: string; confirm?: string; hint?: string } = {}): Promise<string | null> {
+export function askText(title: string, opts: { initial?: string; confirm?: string; hint?: string; allowEmpty?: boolean } = {}): Promise<string | null> {
   return new Promise((resolve) => {
     let answer: string | null = null;
     const { box, close } = overlay(title, () => resolve(answer));
     const input = h("input", { type: "text", value: opts.initial ?? "", "aria-label": title, spellcheck: "true" });
     const done = () => {
       const v = input.value.trim();
-      if (!v) return;
+      if (!v && !opts.allowEmpty) return;
       answer = v;
       close();
     };
