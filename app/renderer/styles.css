@@ -173,11 +173,11 @@ button { font: inherit; color: inherit; }
 /* ---- Source view ----------------------------------------------------------------------------- */
 
 #source { background: var(--surface); overflow: hidden; }
-#source .cm-editor { height: 100%; font-size: 13px; }
+:is(#source, .inline-edit) .cm-editor { height: 100%; font-size: 13px; }
 #source .cm-scroller { font-family: var(--font-mono); line-height: 1.6; padding: 12px 0 60px; }
 #source .cm-content { max-width: 860px; margin: 0 auto; padding: 0 24px; }
-#source .cm-note { color: var(--note-q); background: rgba(47, 79, 122, 0.08); border-radius: 3px; }
-#source .cm-focused { outline: none; }
+:is(#source, .inline-edit) .cm-note { color: var(--note-q); background: rgba(47, 79, 122, 0.08); border-radius: 3px; }
+:is(#source, .inline-edit) .cm-focused { outline: none; }
 
 /* ---- Welcome --------------------------------------------------------------------------------- */
 
@@ -355,7 +355,7 @@ button { font: inherit; color: inherit; }
 .known-tag { flex: none; font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ok); }
 .chapter-actions { flex-wrap: wrap; }
 #statusbar .st-btn.has-hints { color: #8a5a10; font-weight: 600; background: rgba(184, 116, 26, 0.12); }
-#source .cm-hint { text-decoration: underline wavy #b8741a; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+:is(#source, .inline-edit) .cm-hint { text-decoration: underline wavy #b8741a; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 #hints-pop { position: fixed; right: 16px; bottom: 34px; width: 460px; max-width: calc(100vw - 32px); max-height: 60vh; display: flex; flex-direction: column; z-index: 30; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18); font-size: 13px; }
 #hints-pop .hp-head { display: flex; align-items: center; gap: 8px; }
 #hints-pop .small { font-size: 12px; color: var(--ink-3); margin: 4px 0 6px; }
@@ -428,13 +428,13 @@ button { font: inherit; color: inherit; }
 
 /* ---- CodeMirror in the app's colours (and so in dark mode) ----------------------------------- */
 
-#source .cm-editor { color: var(--ink); background: var(--surface); }
-#source .cm-cursor, #source .cm-dropCursor { border-left-color: var(--ink); }
-#source .cm-selectionBackground, #source .cm-focused .cm-selectionBackground { background: rgba(110, 150, 255, 0.28) !important; }
-#source .cm-panels { background: var(--panel); color: var(--ink); border-color: var(--line); }
-#source .cm-panels input, #source .cm-panels button { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; }
-#source .cm-searchMatch { background: rgba(255, 214, 102, 0.4); }
-#source .cm-searchMatch-selected { background: rgba(255, 176, 32, 0.65); }
+:is(#source, .inline-edit) .cm-editor { color: var(--ink); background: var(--surface); }
+:is(#source, .inline-edit) .cm-cursor, :is(#source, .inline-edit) .cm-dropCursor { border-left-color: var(--ink); }
+:is(#source, .inline-edit) .cm-selectionBackground, :is(#source, .inline-edit) .cm-focused .cm-selectionBackground { background: rgba(110, 150, 255, 0.28) !important; }
+:is(#source, .inline-edit) .cm-panels { background: var(--panel); color: var(--ink); border-color: var(--line); }
+:is(#source, .inline-edit) .cm-panels input, :is(#source, .inline-edit) .cm-panels button { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; }
+:is(#source, .inline-edit) .cm-searchMatch { background: rgba(255, 214, 102, 0.4); }
+:is(#source, .inline-edit) .cm-searchMatch-selected { background: rgba(255, 176, 32, 0.65); }
 
 /* ---- Focus mode: only the words ---------------------------------------------------------------- */
 
@@ -452,8 +452,12 @@ button { font: inherit; color: inherit; }
 .edit-pencil:hover { color: var(--ink); border-color: var(--line-strong); }
 .edit-pencil[hidden] { display: none; }
 .inline-edit { position: absolute; z-index: 6; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px; padding: 8px 10px 8px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.22); }
-.ie-label { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 5px; }
-.ie-text { display: block; width: 100%; min-height: 48px; resize: none; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: var(--surface); color: var(--ink); font: 13.5px/1.6 var(--font-mono); outline: none; }
-.ie-text:focus { border-color: #5b8def; box-shadow: 0 0 0 2px rgba(91, 141, 239, 0.25); }
+.ie-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.ie-label { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+.ie-host { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--surface); }
+.ie-host .cm-editor { max-height: 62vh; min-height: 56px; font-size: 13px; }
+.ie-host .cm-editor.cm-focused { outline: 2px solid rgba(91, 141, 239, 0.45); outline-offset: -2px; }
+.ie-host .cm-scroller { font-family: var(--font-mono); line-height: 1.6; padding: 6px 0; overflow: auto; }
+.ie-host .cm-content { padding: 0 10px; }
 .ie-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 .ie-hint { flex: 1; font-size: 12px; color: var(--ink-3); }

@@ -4,9 +4,10 @@ import { defaultKeymap, history, historyKeymap, indentWithTab, redo, undo } from
 import { markdown } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
-import { openSearchPanel, search, searchKeymap, SearchQuery, setSearchQuery } from "@codemirror/search";
-import { EditorState, StateEffect, StateField } from "@codemirror/state";
+import { openSearchPanel, search, searchKeymap, searchPanelOpen, SearchQuery, setSearchQuery } from "@codemirror/search";
+import { EditorState, StateEffect, StateField, type Extension } from "@codemirror/state";
 import { formatEdit, type FormatCommand } from "../../core/format.ts";
+import { Prec } from "@codemirror/state";
 import { Decoration, drawSelection, EditorView, keymap, MatchDecorator, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 
 // Quiet colours: weight and slant for structure, one grey for marks. Headings are not underlined.
@@ -61,13 +62,10 @@ const hintMarks = StateField.define<DecorationSet>({
 export class SourceView {
   private view: EditorView;
   private muted = false;
+  private extensions: Extension[];
 
-  constructor(parent: HTMLElement, hooks: { onChange(text: string): void; onCursor?(line: number): void; onFocusChange?(focused: boolean): void; onImages?(files: File[]): void }) {
-    this.view = new EditorView({
-      parent,
-      state: EditorState.create({
-        doc: "",
-        extensions: [
+  constructor(parent: HTMLElement, hooks: { onChange(text: string): void; onCursor?(line: number): void; onFocusChange?(focused: boolean): void; onImages?(files: File[]): void; onKeep?(): void; onCancel?(): void }) {
+    this.extensions = [
           history(),
           drawSelection(),
           EditorView.lineWrapping,
@@ -94,15 +92,32 @@ export class SourceView {
             },
           }),
           keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
+          // When the editor sits on the page, Cmd+Enter keeps the changes and Esc drops them (unless the search box is open: Esc closes that first).
+          Prec.high(
+            keymap.of([
+              { key: "Mod-Enter", run: () => (hooks.onKeep ? (hooks.onKeep(), true) : false) },
+              { key: "Escape", run: (v) => (hooks.onCancel && !searchPanelOpen(v.state) ? (hooks.onCancel(), true) : false) },
+            ]),
+          ),
           EditorView.updateListener.of((u) => {
             if (u.docChanged && !this.muted) hooks.onChange(u.state.doc.toString());
             else if (u.selectionSet && !this.muted) hooks.onCursor?.(u.state.doc.lineAt(u.state.selection.main.head).number - 1);
             if (u.focusChanged) hooks.onFocusChange?.(u.view.hasFocus);
           }),
           EditorView.contentAttributes.of({ "aria-label": "Chapter source", spellcheck: "true" }),
-        ],
-      }),
-    });
+    ];
+    this.view = new EditorView({ parent, state: EditorState.create({ doc: "", extensions: this.extensions }) });
+  }
+
+  /** Forget what can be undone (a new text was loaded; undo should not go back to the one before). */
+  resetHistory(): void {
+    this.view.setState(
+      EditorState.create({ doc: this.view.state.doc, selection: this.view.state.selection, extensions: this.extensions }),
+    );
+  }
+
+  destroy(): void {
+    this.view.destroy();
   }
 
   get text(): string {

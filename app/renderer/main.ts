@@ -96,6 +96,7 @@ const reading = new ReadingView(viewEls.reading, api, {
   onCopy: (text) => void api.copyText(text).then(() => toast(`Copied. Paste it to Claude Code: ${text}`)),
   onFound: (count, index) => showFound(count, index),
   onEditing: () => showView(view),
+  onPictures: (files) => keepPictures(files),
 });
 
 const searchPanel = new SearchPanel(
@@ -698,6 +699,7 @@ function showFound(count: number, index: number): void {
  */
 function openFind(initial?: string, opts: { focus?: boolean } = {}): void {
   if (!doc) return;
+  if (reading.isEditing && reading.editorFind()) return;
   if (view === "source") {
     if (initial) source.setSearch(initial);
     return source.openFind();
@@ -820,16 +822,24 @@ async function exportBook(kind: ExportKind): Promise<void> {
 }
 
 /** Pictures pasted or dropped into the text: keep them in the book and put them in the chapter. */
-async function addPictures(files: File[]): Promise<void> {
-  if (!doc) return;
+async function keepPictures(files: File[]): Promise<string[] | null> {
+  if (!doc) return null;
   const lines: string[] = [];
   for (const f of files) {
     const res = await api.saveImage(doc.file, new Uint8Array(await f.arrayBuffer()));
-    if (!res.ok) return toast(res.message);
+    if (!res.ok) {
+      toast(res.message);
+      return null;
+    }
     lines.push(...res.markdown);
   }
-  source.insertPictures(lines);
   toast(`${lines.length === 1 ? "Picture" : "Pictures"} kept in the book's images folder. Write what it shows between the brackets.`);
+  return lines;
+}
+
+async function addPictures(files: File[]): Promise<void> {
+  const lines = await keepPictures(files);
+  if (lines) source.insertPictures(lines);
 }
 
 /** Format > Insert Picture: choose files from disk. */
@@ -1025,6 +1035,7 @@ async function runCheck(): Promise<void> {
     if (!doc || doc.file !== file) return;
     hints = found;
     source.setHints(found);
+    reading.setHints(found);
     renderStatus();
     if (document.getElementById("hints-pop")) void showHints(false);
   } catch {
@@ -1180,6 +1191,7 @@ api.onMenu((cmd: MenuCommand) => {
     case "redo": {
       // The editor keeps its own history; a note box or the find box uses the browser's.
       const el = document.activeElement as HTMLElement | null;
+      if (reading.isEditing && el?.closest(".inline-edit") && reading.editorUndo(cmd === "redo")) break;
       if (el?.closest("#source")) cmd === "undo" ? source.undo() : source.redo();
       else document.execCommand(cmd);
       break;
