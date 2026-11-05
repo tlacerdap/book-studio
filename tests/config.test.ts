@@ -15,7 +15,7 @@ function bookWith(yaml: string | null): string {
 
 // Each case is run through both loaders. Where the TypeScript loader accepts, the Python one must too, with the same values.
 const CASES: Record<string, string> = {
-  full: `title: AI Engineer Field Guide\nsubtitle: From Basics to Production\nauthor: Tabaré Lacerda\ndate: November 1, 2026\nlanguage: en\nchapters: chapters/*.md\noutput: ai-engineer-field-guide\nindex: INDEX.md\n`,
+  full: `title: Example Book\nsubtitle: A subtitle\nauthor: Jane Writer\ndate: November 1, 2026\nlanguage: en\nchapters: chapters/*.md\noutput: example-book\nindex: INDEX.md\n`,
   "title only": `title: Just a title\n`,
   "missing title": `subtitle: no title here\n`,
   "unknown key": `title: X\nautor: me\n`,
@@ -40,7 +40,7 @@ const CASES: Record<string, string> = {
 describe("book.yaml", () => {
   it("loads a full file", () => {
     const b = loadBook(bookWith(CASES.full));
-    expect(b).toMatchObject({ title: "AI Engineer Field Guide", subtitle: "From Basics to Production", author: "Tabaré Lacerda", date: "November 1, 2026", language: "en", chapters: "chapters/*.md", output: "ai-engineer-field-guide", index: "INDEX.md" });
+    expect(b).toMatchObject({ title: "Example Book", subtitle: "A subtitle", author: "Jane Writer", date: "November 1, 2026", language: "en", chapters: "chapters/*.md", output: "example-book", index: "INDEX.md" });
   });
 
   it("fills in defaults", () => {

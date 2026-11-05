@@ -8,6 +8,8 @@ directories:
 artifactName: Book-Studio-${version}-${os}-${arch}.${ext}
 files:
   - package.json
+  - LICENSE
+  - THIRD_PARTY_LICENSES.md
   - dist/**
   - styles/**
   - "!dist/electron/**"
@@ -36,7 +38,7 @@ nsis:
 linux:
   category: Office
   executableName: book-studio
-  maintainer: Tabaré Lacerda <lacerdatabare@gmail.com>
+  maintainer: Tabaré Lacerda <tlacerdap@users.noreply.github.com>
   target:
     - target: AppImage
       arch: [x64]

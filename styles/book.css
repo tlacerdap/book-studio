@@ -1,5 +1,5 @@
 /* ==========================================================================
-   AI Engineer Field Guide - print stylesheet (WeasyPrint, CSS Paged Media)
+   Book Studio - print stylesheet (CSS Paged Media, laid out by Paged.js and printed by Chromium)
 
    Everything you are likely to tune is a custom property in :root, in the order
    it matters: fonts, type scale, vertical rhythm, lists, code, ink, page, breaks.

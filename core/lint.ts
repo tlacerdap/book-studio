@@ -1,7 +1,7 @@
 // Mechanical checks for chapter files. Port of extras/lint_chapters.py, kept unchanged for now.
 //
-// BOOK-SPECIFIC. These rules (template headings, banned terms, the PROGRESS.md chapter map) belong to the AI Engineer
-// Field Guide style guide, not to book-studio. They are planned to become settings in book.yaml.
+// BOOK-SPECIFIC. These rules (template headings, banned terms, the PROGRESS.md chapter map) belong to one author's own
+// style guide, not to Book Studio. Most books will not use this command; the `rules` setting in book.yaml is the general way.
 
 import fs from "node:fs";
 import path from "node:path";

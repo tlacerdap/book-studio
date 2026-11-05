@@ -1,0 +1,15 @@
+# A small book to try Book Studio with. Open this folder in the app (File > Open Book Folder).
+title: "A Pocket Guide to Coffee"
+subtitle: "A sample book for Book Studio"
+author: "Book Studio"
+date: "2026"
+language: en
+chapters: chapters/*.md
+output: pocket-guide-to-coffee
+
+pages: 14                   # the page limit: the left panel shows how far you are
+terms: [PDF]                # words the reader knows, so the writing hints never ask about them
+rules:                      # words that must not appear: the app underlines them as you write
+  - forbid: "\\bvery\\b"
+    regex: true
+    message: Say how much, instead of "very".

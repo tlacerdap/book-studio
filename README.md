@@ -1,11 +1,190 @@
-# book-studio
+<h1 align="center">Book Studio</h1>
 
-Book Studio reads a book folder and renders it: a print-ready A4 PDF, typographic and ink checks on that PDF, and
-a desktop app (macOS, Windows, Linux, Electron and TypeScript) for reading, annotating and printing. It holds all the code, fonts and
-CSS; the book repo holds only the writing. It is fully offline and needs no Python.
+<p align="center">
+  <b>Write, read, annotate and print a book written in markdown.</b><br>
+  Free and open source. Works offline. No accounts, no subscriptions, nothing to buy.
+</p>
 
-Pipeline: markdown-it (markdown to HTML), Paged.js (pagination), Chromium's `printToPDF` through Electron (PDF),
-pdf.js (checker).
+<p align="center">
+  <a href="LICENSE">MIT licence</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#try-it-in-two-minutes">Try it</a> ·
+  <a href="#using-book-studio-with-claude">Use it with Claude</a> ·
+  <a href="THIRD_PARTY_LICENSES.md">Third-party licences</a>
+</p>
+
+<p align="center"><img src="docs/screenshots/reading.png" alt="Book Studio showing a chapter as printed pages, with the reader's notes in the margin" width="900"></p>
+
+Book Studio is a desktop app (macOS, Windows, Linux) for people who write a book as a folder of markdown files and want to
+*read it like a book*: the chapter laid out in real printed pages, the same ones that come out in the PDF. You can edit it right on
+the page, leave notes for yourself (or for an AI assistant) in the margin, check that the PDF is clean, and export it as an EPUB or
+a single web page.
+
+It keeps everything in plain markdown files in a folder you own. There is no cloud, no database and no lock-in: stop using Book Studio
+tomorrow and you still have a folder of readable `.md` files.
+
+## What it does
+
+| | |
+| --- | --- |
+| **Three views of one chapter** | *Reading*: the chapter as printed pages. *Edit*: the page itself, edited directly (type, make words bold, start a list with `- `); the markdown is written behind the scenes. *Source*: the markdown, in a code editor. A change in one is in the others. |
+| **Your files stay yours** | Only the paragraph, list or table you changed is rewritten. A chapter you merely open is saved byte for byte as it was. |
+| **Notes in the margin** | Select words, press a key, and leave a question, a change request or a "this lost me" note. They live inside the markdown as comments, and show as cards in the margin. [Claude Code](#using-book-studio-with-claude) (or any assistant, or you) answers them. |
+| **A print-ready PDF with checks** | A4, one typeface system, hairline rules, black and white. After printing, Book Studio reads the PDF back and tells you what is wrong: lost text, stranded headings, split code, pages that end half empty, colour. |
+| **Search the whole book** | Every chapter at once, with the sentences shown, and a notes inbox for every open question. |
+| **Page limit** | Set one (`pages: 126`) and watch "114 of 126 pages" with a bar. Mark chapters you know as *known* to leave them out of the PDF. |
+| **Writing hints** | Your own rules ("never write `Remember:`") and acronyms used before they are explained, underlined as you write. |
+| **Study mode** | Turns the `**Q:** ... **A:** ...` answers in your chapters into flashcards that come back at growing intervals. |
+| **Pictures and diagrams** | Paste a picture, or write a [Mermaid](https://mermaid.js.org) diagram as text. Both print in grey, like the rest of the book. |
+| **Export** | PDF, EPUB, one self-contained web page, or each chapter as its own PDF. |
+| **Reading themes** | Light, Sepia, Dark, Black, or follow the system, plus a warm tint for the evening. |
+| **Version history, autosave, chapters** | Every save keeps a version outside your book folder; new, rename, move and delete chapters with links kept working. |
+
+<p align="center">
+  <img src="docs/screenshots/edit.png" alt="The Edit view: the chapter as one long page, edited directly" width="440">
+  <img src="docs/screenshots/notes.png" alt="The notes inbox listing every question and change request" width="440">
+</p>
+<p align="center">
+  <img src="docs/screenshots/study.png" alt="Study mode: a flashcard made from an interview answer" width="440">
+  <img src="docs/screenshots/sepia.png" alt="The sepia reading theme" width="440">
+</p>
+
+## Install
+
+Download the installer for your system from the [Releases](https://github.com/tlacerdap/book-studio/releases) page (macOS `.dmg`,
+Windows `.exe`, Linux `.AppImage` or `.deb`), or [build it yourself](#build-from-source). The installers are **not code-signed**
+(a signing certificate is a paid service, and Book Studio has none), so your system warns once on first launch:
+
+- **macOS:** open the `.dmg`, drag Book Studio to Applications, then right-click the app and choose **Open**, and **Open** again.
+  If macOS says the app "is damaged", run `xattr -dr com.apple.quarantine "/Applications/Book Studio.app"` once.
+- **Windows:** if SmartScreen says "Windows protected your PC", click **More info**, then **Run anyway**.
+- **Linux:** `chmod +x Book-Studio-*.AppImage && ./Book-Studio-*.AppImage`, or `sudo apt install ./Book-Studio-*.deb`.
+
+Nothing is sent anywhere. The app works without a network connection and has no telemetry, update checker or account.
+
+### Build from source
+
+You need Node.js 22.12 or newer.
+
+```bash
+git clone https://github.com/tlacerdap/book-studio.git
+cd book-studio
+npm install
+npm start            # builds and opens the app
+npm test             # the automated tests
+npm run dist         # installers for this machine, into release/
+```
+
+## Try it in two minutes
+
+Open the app, choose **File > Open Book Folder...** and pick [`examples/sample-book`](examples/sample-book). It is a three-chapter
+pocket guide to coffee that uses every feature: notes (one answered, one open), a table, a picture, a diagram, flashcards, a page
+limit and a writing rule. Click a paragraph in the Reading view, press the pencil, and edit it. Press **Print PDF** to see the checks.
+
+Your own book is any folder with a `book.yaml` and your chapters:
+
+```
+my-book/
+  book.yaml
+  chapters/
+    01-first-chapter.md
+    02-second-chapter.md
+  images/            (made for you when you paste a picture)
+```
+
+```yaml
+# book.yaml
+title: "My Book"
+author: "Your Name"
+chapters: chapters/*.md      # ordered by file name
+pages: 120                   # optional page limit
+```
+
+Each chapter starts with `# Chapter 1 - Title`. That is all Book Studio needs; the full list of settings is in [book.yaml](#bookyaml).
+If you open a folder that has chapters but no `book.yaml`, the app offers to create one. It never writes one into a folder that does not
+look like a book.
+
+## Using Book Studio with Claude
+
+Book Studio does not talk to any AI service and needs no API key. It is built so that **you read and edit in the app, and an AI
+coding assistant such as [Claude Code](https://claude.com/claude-code) edits the same markdown files from the terminal**. The two never
+step on each other: Book Studio watches the folder, and when Claude changes a chapter it reloads on screen. (If you have unsaved edits
+at that moment, it asks which version to keep.)
+
+The bridge between you and the assistant is the **notes protocol**, which is just comments in the markdown:
+
+```markdown
+Coffee is a seed. Light roasts keep more of the fruit and acid of the bean.
+<!-- Q: why does light roast taste sour? [on: "fruit and acid"] -->
+<!-- A: done - added a sentence explaining that acid is strongest before long roasting breaks it down. -->
+```
+
+| Note | You press | Means |
+| --- | --- | --- |
+| `<!-- Q: ... -->` | **Q** | A question: "I do not understand this". The assistant rewrites the text so you would not have to ask. |
+| `<!-- E: ... -->` | **E** | A change request: "change this". |
+| `<!-- ? -->` | **?** | "This lost me", with no words. The assistant makes it clearer. |
+| `<!-- A: ... -->` | (the assistant) | The answer, written under your note. |
+
+### The workflow
+
+1. **Read** the chapter in Book Studio. When something is unclear, **select the exact words** and press `Q`, `E` or `?`, type a line,
+   press Enter. The words you selected are saved with the note (`[on: "..."]`), so the assistant knows precisely what you meant.
+2. **Ask Claude Code** to deal with them. The `?` button in the toolbar copies the exact sentence to paste, for example
+   `process notes in chapter 03`. Claude reads the chapter, rewrites the text, and writes an `A` under each note saying what it changed.
+3. **Read the answers** in the margin. Not happy? Press **Reply** and write a follow-up. Happy? Press **Read**, which removes the note
+   and its answer.
+4. Repeat. A note with no answer under it is one that has not been processed yet, so you can always see what is still open (the badge on
+   each chapter, and the **Notes** tab).
+
+### Setting Claude Code up for your book
+
+Put a `CLAUDE.md` file in your book's folder. Claude Code reads it at the start of every session. Start from
+[`examples/sample-book/CLAUDE.md`](examples/sample-book/CLAUDE.md): it describes the protocol above, tells Claude how to process notes
+("answer every note, never delete one without an answer, do not reformat lines you did not need to change"), and has a place for
+your own rules about the book (the page limit, the voice, the shape of a chapter). Then, in the book's folder:
+
+```bash
+claude                     # start Claude Code in your book's folder
+> process notes in chapter 03
+```
+
+Tips from using it this way:
+
+- **Do not edit a chapter in Book Studio while Claude Code is rewriting that same chapter.** Autosave never overwrites a file that changed
+  on disk without asking, but two writers on one file is still confusing. Let Claude finish, then read.
+- **Keep your rules in `CLAUDE.md` and in `book.yaml`** (`pages`, `rules`, `terms`). The app shows the same rules as underlined hints
+  as you write, so you and the assistant are held to the same standard.
+- The checks on the printed PDF (lost text, stranded headings, colour) are a good "did the assistant break anything?" test after a big
+  edit: press **Print PDF**.
+- Any assistant that can edit files works the same way, because the protocol is plain text. Claude Code is the one this was built with.
+
+*Book Studio is an independent open-source project. It is not made by, affiliated with or endorsed by Anthropic. "Claude" and
+"Claude Code" are Anthropic's names; using Claude Code needs your own Anthropic account, which is separate from Book Studio.*
+
+## Open source, and what is in it
+
+Book Studio is released under the [MIT licence](LICENSE). Everything it contains is free to use and redistribute:
+
+- the app and its code (MIT);
+- the typefaces *Newsreader*, *Hanken Grotesk* and *JetBrains Mono* (SIL Open Font License, which also allows embedding them in the
+  documents you make);
+- open-source libraries (Electron, markdown-it, Paged.js, ProseMirror, CodeMirror, Mermaid, pdf.js and others), all under permissive licences.
+  [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) lists every package with its licence text, made by `npm run notices`.
+
+There are no paid components, no API keys, no tracking, and nothing is downloaded when you run it. The only non-free step in a normal
+software release, code-signing the installers, is left out on purpose, which is why you see the first-launch warning above.
+
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
+
+# Reference
+
+Everything below is the detailed reference for the app, the command line, `book.yaml`, the checks and the styles.
+
+Pipeline: markdown-it (markdown to HTML), Paged.js (pagination), Chromium's `printToPDF` through Electron (PDF), pdf.js (the checker).
+Book Studio holds all the code, fonts and CSS; the book folder holds only the writing.
 
 ## The app
 
@@ -69,11 +248,10 @@ press Enter. The keys Q, E and ? (capital or not) pick the kind even while the p
 preload bridge (`app/shared/api.ts` lists every call). It loads only its own files, the shared styles and the prepared
 pages; the network is blocked outright. Links in the book open in your own browser.
 
-## Installers
+## Building the installers
 
-Every build that is handed out has its own version (`npm version patch --no-git-tag-version`, or `minor` for features), so
-the installed copy can always be told apart from the one before: the version is in the `?` popover, on the welcome screen
-and in the About box.
+Every installer that is handed out should have its own version (`npm version patch --no-git-tag-version`, or `minor` for features), so
+an installed copy can always be told apart from the one before: the version is in the `?` popover, on the welcome screen and in the About box.
 
 | System | File | Built with |
 | --- | --- | --- |
@@ -85,29 +263,16 @@ and in the About box.
 npm run dist          # everything this machine can build, into release/
 npx electron-builder --mac --publish never      # or --win, or --linux
 npm run pack          # an unpacked app in release/mac-arm64/ (or similar), quick to test
+npm run notices       # regenerate THIRD_PARTY_LICENSES.md after changing dependencies
 ```
 
 `electron-builder.yml` holds the settings. A macOS build holds both Mac architectures, so it needs the native canvas
 module (used by the checker's ink and colour checks) for both: `npm install --no-save --force
 @napi-rs/canvas-darwin-x64@0.1.100 @napi-rs/canvas-darwin-arm64@0.1.100` before building on a Mac. The `.deb` needs a
 Linux machine (its packaging tool fails on macOS); the other installers build anywhere. The icon is `assets/icon.png`,
-drawn by `npm run icon`.
-
-**No CI.** Installers are built by hand on this machine with `npm run dist` (the Linux `.deb` needs a Linux machine). The GitHub Actions workflow that used to build all three systems on every push was removed: it only ever filled GitHub's artifact storage, and nothing depended on it.
-
-## First launch
-
-The installers are **not signed or notarized**, so each system warns once. The app itself is the same on all three.
-
-- **macOS:** open the `.dmg`, drag Book Studio to Applications. The first time, right-click (or Control-click) the app and
-  choose **Open**, then **Open** again in the dialog. If macOS says the app "is damaged", run
-  `xattr -dr com.apple.quarantine "/Applications/Book Studio.app"` once.
-- **Windows:** run the installer. If SmartScreen shows "Windows protected your PC", click **More info**, then **Run anyway**.
-- **Linux:** `chmod +x Book-Studio-*.AppImage && ./Book-Studio-*.AppImage`, or `sudo apt install ./Book-Studio-*.deb`.
-  The AppImage starts Chromium without its process sandbox (an AppImage cannot carry the helper it needs); the window
-  keeps its own sandbox, context isolation and content security policy. The `.deb` should use the normal sandbox (untested here).
-
-Nothing is sent anywhere; the app works without a network connection.
+drawn by `npm run icon`. The installers are unsigned on purpose (see [Install](#install)). The AppImage starts Chromium without its
+process sandbox (an AppImage cannot carry the helper it needs); the window keeps its own sandbox, context isolation and content
+security policy.
 
 ## Layout
 
@@ -123,7 +288,7 @@ styles/     book.css, paged.css and fonts/: the typography shared by the app vie
 tests/      vitest
 ```
 
-A **book** is any folder that contains a `book.yaml`. Nothing in this repo is specific to one book.
+A **book** is any folder that contains a `book.yaml`. Nothing in the app is specific to one book (the optional `lint` command is the one exception, see below).
 
 ## Setup
 
@@ -145,7 +310,7 @@ npx book-studio pdf   /path/to/book --check            # build, then run the che
 npx book-studio pdf   /path/to/book --out /tmp/x.pdf --html /tmp/x.html --extra-css try.css
 npx book-studio check /path/to/book                    # checks build/<output>.pdf
 npx book-studio check /path/to/book --samples /tmp/pages   # also write PNGs of sample pages
-npx book-studio lint  /path/to/book                    # the Field Guide's own chapter lint
+npx book-studio lint  /path/to/book                    # optional: a chapter lint written for the author's own style guide (needs a PROGRESS.md); most books will not use it
 ```
 
 Run it from this folder, or by path (`node /path/to/book-studio/bin/book-studio.js ...`). Exit status is 0 on success
@@ -155,13 +320,13 @@ decisions and `--no-rules` runs Paged.js without the book's pagination rules.
 ## book.yaml
 
 ```yaml
-title: AI Engineer Field Guide     # required
-subtitle: From Basics to Production
-author: Tabaré Lacerda
+title: My Book                     # required
+subtitle: A subtitle
+author: Your Name
 date: November 1, 2026             # printed on the cover as written
 language: en                       # document language and hyphenation
 chapters: chapters/*.md            # glob; chapters are ordered by file name
-output: ai-engineer-field-guide    # the PDF is build/ai-engineer-field-guide.pdf
+output: my-book                    # the PDF is build/my-book.pdf
 index: INDEX.md                    # optional: groups chapters into Parts (see below)
 pages: 126                         # optional: the page limit; the left panel shows how far you are
 known: [02-ch02-python.md]         # optional: chapters kept in the folder but left out of the PDF (the app edits this)

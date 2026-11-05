@@ -22,7 +22,7 @@ export interface CheckInput {
 
 // Everyone knows these; asking for an explanation would only be noise.
 const COMMON = new Set([
-  "AI", "PDF", "URL", "URLS", "HTML", "CSS", "JSON", "YAML", "SQL", "ID", "IDS", "OK", "UI", "UX", "CPU", "GPU", "RAM", "FAQ", "USA", "UK", "EU", "CEO", "HR", "IT", "TV", "PC", "OS", "GB", "MB", "KB", "TB", "EPAM",
+  "AI", "PDF", "URL", "URLS", "HTML", "CSS", "JSON", "YAML", "SQL", "ID", "IDS", "OK", "UI", "UX", "CPU", "GPU", "RAM", "FAQ", "USA", "UK", "EU", "CEO", "HR", "IT", "TV", "PC", "OS", "GB", "MB", "KB", "TB",
   "NOT", "AND", "THE", "FOR", "ALL", "ANY", "USE", "NEW", "OLD", "ONE", "YES", "NO", "BUT", "ARE", "YOU", "CAN", "NEVER", "ALWAYS", "ONLY", "TODO", "NOTE", "WARNING", "READ", "STOP", "WHY", "HOW", "WHAT",
 ]);
 

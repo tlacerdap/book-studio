@@ -2,7 +2,7 @@
   "name": "book-studio",
   "version": "2.1.0",
   "private": true,
-  "description": "Read, annotate and print a book written in markdown. Fully offline.",
+  "description": "Read, write, annotate and print a book written in markdown. Open source, fully offline, no accounts.",
   "type": "module",
   "bin": {
     "book-studio": "bin/book-studio.js"
@@ -15,7 +15,8 @@
     "start": "npm run build && electron .",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder --publish never",
-    "icon": "electron scripts/make-icon.cjs"
+    "icon": "electron scripts/make-icon.cjs",
+    "notices": "node scripts/notices.mjs"
   },
   "engines": {
     "node": ">=22.12"
@@ -65,8 +66,25 @@
   "main": "dist/app/main.mjs",
   "author": {
     "name": "Tabaré Lacerda",
-    "email": "lacerdatabare@gmail.com"
+    "url": "https://github.com/tlacerdap"
   },
-  "license": "UNLICENSED",
-  "homepage": "https://github.com/tlacerdap/book-studio"
+  "license": "MIT",
+  "homepage": "https://github.com/tlacerdap/book-studio",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tlacerdap/book-studio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tlacerdap/book-studio/issues"
+  },
+  "keywords": [
+    "markdown",
+    "book",
+    "pdf",
+    "epub",
+    "editor",
+    "electron",
+    "offline",
+    "claude-code"
+  ]
 }
