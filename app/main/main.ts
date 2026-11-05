@@ -12,6 +12,8 @@ import { checkText } from "../../core/writing-rules.ts";
 import { inboxNotes } from "../../core/inbox.ts";
 import { exportEpub, exportHtml } from "../../core/export.ts";
 import { setDiagramProvider } from "../../core/diagrams.ts";
+import { editorCss } from "../../core/editcss.ts";
+import { readCss, styleFiles } from "../../core/style.ts";
 import { DiagramPainter } from "./diagrams.ts";
 import { buildPdf } from "../../core/pdf.ts";
 import { selectChapters } from "../../core/book.ts";
@@ -86,7 +88,7 @@ const APP_CSP = [
   "default-src 'none'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
-  `img-src 'self' data:`,
+  `img-src 'self' data: ${SCHEME}://book`,
   `font-src ${SCHEME}://assets`,
   `frame-src ${SCHEME}://reading`,
   "connect-src 'none'",
@@ -506,6 +508,7 @@ function registerIpc(): void {
     keepVersion(f, fs.readFileSync(f, "utf8"), true); // the version being replaced stays in the history
     return text;
   });
+  handle("style:edit", () => editorCss(readCss(styleFiles(requireBook(), [], { paged: false }))));
   handle("export:run", (kind: ExportKind, file: string | null) => exportRun(kind, file));
   handle("image:save", (chapter: string, bytes: Uint8Array) => {
     const b = requireBook();
@@ -737,7 +740,8 @@ function buildMenu(): void {
       label: "View",
       submenu: [
         { label: "Reading", accelerator: "CmdOrCtrl+Alt+1", click: () => send("view-reading") },
-        { label: "Source", accelerator: "CmdOrCtrl+Alt+2", click: () => send("view-source") },
+        { label: "Edit", accelerator: "CmdOrCtrl+Alt+2", click: () => send("view-edit") },
+        { label: "Source", accelerator: "CmdOrCtrl+Alt+3", click: () => send("view-source") },
         { label: "Switch View", accelerator: "CmdOrCtrl+/", click: () => send("toggle-view") },
         { type: "separator" },
         { label: "Show or Hide Chapters", accelerator: "CmdOrCtrl+\\", click: () => send("toggle-panel") },

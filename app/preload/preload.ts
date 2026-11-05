@@ -30,6 +30,7 @@ const api: StudioApi = {
   outlines: (current) => call("book:outlines", current),
   setBudget: (pages) => call("book:set-budget", pages),
   setKnown: (file, known) => call("book:set-known", file, known),
+  editCss: () => call("style:edit"),
   exportBook: (kind, file) => call("export:run", kind, file),
   onExportProgress: (cb) => subscribe<[string]>("export:progress", cb),
   saveImage: (file, bytes) => call("image:save", file, bytes),

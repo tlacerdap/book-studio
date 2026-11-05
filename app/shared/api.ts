@@ -115,6 +115,7 @@ export type MenuCommand =
   | "goto"
   | "view-reading"
   | "edit-block"
+  | "view-edit"
   | "view-source"
   | `format:${FormatCommand}`
   | "toggle-view"
@@ -161,6 +162,8 @@ export interface StudioApi {
   allNotes(current: { file: string; text: string } | null): Promise<ChapterNotes[]>;
   /** Flashcards from every chapter that is not marked as known. */
   studyCards(current: { file: string; text: string } | null): Promise<ChapterCards[]>;
+  /** The book's page styles, made fit to style the Edit view. */
+  editCss(): Promise<string>;
   /** Write the book (or a chapter) in another shape. Asks where to put it; `file` is the open chapter, for "chapter-pdf". */
   exportBook(kind: ExportKind, file: string | null): Promise<ExportOutcome>;
   onExportProgress(cb: (message: string) => void): () => void;

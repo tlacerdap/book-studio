@@ -9,6 +9,7 @@ import type { BookHints, BookInfo, ExportKind, FormatCommand, MenuCommand, OpenR
 import { askText, openHistory, openPalette, paletteItems } from "./dialogs.ts";
 import { clear, h } from "./dom.ts";
 import { Panel } from "./panel.ts";
+import { EditView } from "./edit.ts";
 import { ReadingView } from "./reading.ts";
 import { ReportPanel } from "./report.ts";
 import { NotesPanel } from "./inbox.ts";
@@ -32,7 +33,7 @@ interface Doc {
 
 let book: BookInfo | null = null;
 let doc: Doc | null = null;
-type ViewMode = "reading" | "source";
+type ViewMode = "reading" | "edit" | "source";
 const stored = (key: string): string | null => {
   try {
     return localStorage.getItem(key);
@@ -47,9 +48,9 @@ const remember = (key: string, value: string): void => {
     /* not remembered */
   }
 };
-let view: ViewMode = stored("view-mode") === "source" ? "source" : "reading";
+let view: ViewMode = stored("view-mode") === "source" ? "source" : stored("view-mode") === "edit" ? "edit" : "reading";
 /** The view that shows the markdown. */
-const writingMode = "source" as const;
+let writingMode: "edit" | "source" = view === "source" ? "source" : "edit";
 let autosaveOn = stored("autosave") !== "0";
 let saving = false;
 let saveTimer: number | undefined;
@@ -62,7 +63,7 @@ let pageCounts: PageCounts | null = null;
 
 const panelEl = $("panel-body");
 const reportEl = $("report");
-const viewEls = { reading: $("reading"), source: $("source"), welcome: $("welcome") };
+const viewEls = { reading: $("reading"), edit: $("edit"), source: $("source"), welcome: $("welcome") };
 
 const panel = new Panel(panelEl, {
   onOpenChapter: (file) => void openChapter(file),
@@ -95,8 +96,7 @@ const reading = new ReadingView(viewEls.reading, api, {
   },
   onCopy: (text) => void api.copyText(text).then(() => toast(`Copied. Paste it to Claude Code: ${text}`)),
   onFound: (count, index) => showFound(count, index),
-  onEditing: () => showView(view),
-  onPictures: (files) => keepPictures(files),
+  onEditRequest: (line) => void openEditAt(line),
 });
 
 const searchPanel = new SearchPanel(
@@ -253,16 +253,56 @@ function toast(message: string): void {
   toastTimer = window.setTimeout(() => (t.hidden = true), 3500);
 }
 
+const edit = new EditView(viewEls.edit, {
+  onChange: (text) => {
+    if (!doc) return;
+    doc.text = text;
+    renderToolbar();
+    renderStatus();
+    scheduleOutline();
+    scheduleAutosave();
+    scheduleCheck();
+  },
+  imageUrl: (src) => pictureUrl(src),
+  onPictures: (files) => keepPictures(files),
+  askLink: (current) => askText("Link", { initial: current, confirm: "Set", allowEmpty: true, hint: "A web address, or the file name of another chapter. Leave it empty to take the link off." }),
+  onFound: (count, index) => showFound(count, index),
+  onToast: (m) => toast(m),
+});
+
+/** Where a picture written in the open chapter as `src` is served from. */
+function pictureUrl(src: string): string {
+  if (/^data:image\//i.test(src)) return src;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(src) || !book || !doc) return "";
+  const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
+  const file = norm(doc.file);
+  let rel: string;
+  try {
+    rel = decodeURI(src);
+  } catch {
+    rel = src;
+  }
+  const parts: string[] = [];
+  for (const seg of `${file.slice(0, file.lastIndexOf("/"))}/${rel}`.split("/")) {
+    if (seg === "..") parts.pop();
+    else if (seg !== "." && seg !== "") parts.push(seg);
+  }
+  const rootParts = norm(book.root).split("/").filter(Boolean);
+  if (rootParts.some((p, i) => parts[i] !== p)) return "";
+  return `bookstudio://book/${parts.slice(rootParts.length).map(encodeURIComponent).join("/")}`;
+}
+
 const dirty = (): boolean => !!doc && doc.text !== doc.saved;
 const isMac = api.platform === "darwin";
 const mod = isMac ? "Cmd" : "Ctrl";
 
 function showView(which: ViewMode | "welcome"): void {
   viewEls.reading.hidden = which !== "reading";
+  viewEls.edit.hidden = which !== "edit";
   viewEls.source.hidden = which !== "source";
   viewEls.welcome.hidden = which !== "welcome";
-  // The format bar is for the markdown: always in the source view, in the reading view only while a block is being edited.
-  $("formatbar").hidden = !(which === "source" || (which === "reading" && reading.isEditing));
+  // The format bar is for writing: in the Edit and Source views.
+  $("formatbar").hidden = !(which === "edit" || which === "source");
   $("statusbar").hidden = which === "welcome";
 }
 
@@ -301,19 +341,20 @@ function renderToolbar(): void {
   if (doc) {
     const seg = h("div", { class: "seg", role: "group", "aria-label": "View" });
     seg.append(
-      h("button", { type: "button", "aria-pressed": String(view === "reading"), title: `The pages as they print: click a paragraph to edit it or add a note (${mod}+Alt+1)`, onClick: () => void setView("reading") }, "Reading"),
-      h("button", { type: "button", "aria-pressed": String(view === "source"), title: `The whole chapter as markdown (${mod}+Alt+2)`, onClick: () => void setView("source") }, "Source"),
+      h("button", { type: "button", "aria-pressed": String(view === "reading"), title: `The pages as they print, with your notes (${mod}+Alt+1)`, onClick: () => void setView("reading") }, "Reading"),
+      h("button", { type: "button", "aria-pressed": String(view === "edit"), title: `Edit the page itself: what you type is written as markdown (${mod}+Alt+2)`, onClick: () => void setView("edit") }, "Edit"),
+      h("button", { type: "button", "aria-pressed": String(view === "source"), title: `The whole chapter as markdown (${mod}+Alt+3)`, onClick: () => void setView("source") }, "Source"),
     );
-    const pct = Math.round(reading.zoomLevel * 100);
+    const pct = Math.round((view === "edit" ? editZoom : reading.zoomLevel) * 100);
     bar.append(
       seg,
-      ...(view === "reading"
+      ...(view !== "source"
         ? [h(
             "div",
             { class: "seg zoom", role: "group", "aria-label": "Zoom" },
-            h("button", { type: "button", title: `Zoom out (${mod}+-)`, "aria-label": "Zoom out", onClick: () => reading.zoomBy(-0.1) }, "\u2212"),
-            h("button", { type: "button", class: "pct", title: `Fit page to window (${mod}+9). Actual size: ${mod}+0`, onClick: () => reading.fitWidth() }, `${pct}%`),
-            h("button", { type: "button", title: `Zoom in (${mod}++)`, "aria-label": "Zoom in", onClick: () => reading.zoomBy(0.1) }, "+"),
+            h("button", { type: "button", title: `Zoom out (${mod}+-)`, "aria-label": "Zoom out", onClick: () => zoomTo(-0.1) }, "\u2212"),
+            h("button", { type: "button", class: "pct", title: view === "edit" ? `Actual size: ${mod}+0` : `Fit page to window (${mod}+9). Actual size: ${mod}+0`, onClick: () => (view === "edit" ? zoomTo(0, true) : reading.fitWidth()) }, `${pct}%`),
+            h("button", { type: "button", title: `Zoom in (${mod}++)`, "aria-label": "Zoom in", onClick: () => zoomTo(0.1) }, "+"),
           )]
         : []),
       h("button", { class: "icon-btn", type: "button", title: "How notes for Claude work", "aria-label": "How notes work", onClick: () => toggleHelp() }, "?"),
@@ -324,8 +365,15 @@ function renderToolbar(): void {
 }
 
 /** Zoom the page in the reading view, the text size in the source view. */
+let editZoom = 1;
 function zoomTo(step: number, reset = false): void {
-  if (view !== "source") {
+  if (view === "edit") {
+    editZoom = reset ? 1 : Math.min(2, Math.max(0.6, Math.round((editZoom + step) * 10) / 10));
+    edit.setZoom(editZoom);
+    renderToolbar();
+    return;
+  }
+  if (view === "reading") {
     if (reset) reading.setZoom(1);
     else reading.zoomBy(step);
     return;
@@ -430,6 +478,7 @@ async function handleOpen(res: OpenResult): Promise<void> {
     book = res.book;
     doc = null;
     reading.clearView();
+    void api.editCss().then((css) => edit.setCss(css));
     renderPanel();
     const remembered = localStorage.getItem(`chapter:${book.root}`);
     const first = book.chapters.find((c) => c.path === remembered) ?? book.chapters[0];
@@ -496,6 +545,11 @@ async function showCurrent(): Promise<void> {
     viewEls.reading.scrollTop = 0;
     await reading.show(doc.file, doc.text);
     if (!findbar.hidden && findInput?.value.trim()) reading.findSet(findInput.value);
+  } else if (view === "edit") {
+    viewEls.edit.scrollTop = 0;
+    edit.load(doc.text);
+    edit.setZoom(editZoom);
+    edit.focus();
   } else {
     source.setText(doc.text);
     source.focus();
@@ -514,6 +568,7 @@ function adjacent(step: number): void {
 // ------------------------------------------------------------------------------------------------
 
 async function save(opts: { auto?: boolean } = {}): Promise<void> {
+  if (view === "edit") edit.flush();
   if (!doc || !dirty()) return;
   window.clearTimeout(saveTimer);
   const file = doc.file;
@@ -584,20 +639,45 @@ async function refreshBook(): Promise<void> {
 
 async function setView(next: ViewMode): Promise<void> {
   if (!doc || next === view) return;
-  const line = next !== "reading" && view === "reading" ? reading.activeFirstLine() : null;
+  // Where the reader was, so the next view opens at the same place.
+  const line = view === "reading" ? reading.activeFirstLine() : view === "edit" ? edit.currentLine() : source.cursorLine;
+  if (view === "edit") {
+    edit.flush();
+    window.clearTimeout(saveTimer);
+  }
   view = next;
   remember("view-mode", next);
+  if (next !== "reading") writingMode = next;
   renderToolbar();
   await showCurrent();
-  if (next !== "reading" && line !== null) source.goToLine(line);
+  if (line === null) return;
+  if (next === "source") source.goToLine(line);
+  else if (next === "edit") edit.scrollToLine(line);
+  else reading.revealLine(line);
+}
+
+/** The pencil in the Reading view: open that paragraph in the Edit view. */
+async function openEditAt(line: number): Promise<void> {
+  if (!doc) return;
+  if (view !== "edit") {
+    view = "edit";
+    remember("view-mode", "edit");
+    writingMode = "edit";
+    renderToolbar();
+    await showCurrent();
+  }
+  edit.scrollToLine(line);
+  edit.focus();
 }
 
 function goToLine(line: number): void {
-  if (view !== "reading") {
+  if (view === "source") {
     source.goToLine(line);
     source.focus();
-  }
-  if (view !== "source") reading.scrollToLine(line);
+  } else if (view === "edit") {
+    edit.scrollToLine(line);
+    edit.focus();
+  } else reading.scrollToLine(line);
 }
 
 function addNote(): void {
@@ -631,6 +711,7 @@ function showBanner(message: string, actions: { label: string; run: () => void }
 
 async function onBookChanged(files: string[]): Promise<void> {
   if (!book || restructuring) return;
+  if (view === "edit") edit.flush();
   await refreshBook();
   if (!doc) return;
   const touched = files.some((f) => f.endsWith(".md") || f === "book.yaml");
@@ -643,7 +724,7 @@ async function onBookChanged(files: string[]): Promise<void> {
     return;
   }
   if (disk === doc.saved) return; // our own write, or a change that did not touch this chapter
-  if (!dirty() && !reading.isEditing) {
+  if (!dirty()) {
     doc.text = disk;
     doc.saved = disk;
     source.setText(disk);
@@ -699,7 +780,6 @@ function showFound(count: number, index: number): void {
  */
 function openFind(initial?: string, opts: { focus?: boolean } = {}): void {
   if (!doc) return;
-  if (reading.isEditing && reading.editorFind()) return;
   if (view === "source") {
     if (initial) source.setSearch(initial);
     return source.openFind();
@@ -708,7 +788,7 @@ function openFind(initial?: string, opts: { focus?: boolean } = {}): void {
     clear(findbar);
     const input = h("input", { type: "search", placeholder: "Find in this chapter", "aria-label": "Find in this chapter" });
     const status = h("span", { class: "status count", role: "status" });
-    const run = () => reading.findSet(input.value);
+    const run = () => (view === "edit" ? edit.findSet(input.value) : reading.findSet(input.value));
     input.addEventListener("input", () => {
       window.clearTimeout(findTimer);
       findTimer = window.setTimeout(run, 100);
@@ -717,13 +797,13 @@ function openFind(initial?: string, opts: { focus?: boolean } = {}): void {
       if (e.key === "Enter") {
         e.preventDefault();
         if (input.value.trim() && !status.textContent) run();
-        else reading.findStep(e.shiftKey ? -1 : 1);
+        else stepFind(e.shiftKey ? -1 : 1);
       } else if (e.key === "Escape") closeFind();
     });
     findbar.append(
       input,
-      h("button", { class: "tb-btn", type: "button", onClick: () => reading.findStep(-1) }, "Previous"),
-      h("button", { class: "tb-btn", type: "button", onClick: () => reading.findStep(1) }, "Next"),
+      h("button", { class: "tb-btn", type: "button", onClick: () => stepFind(-1) }, "Previous"),
+      h("button", { class: "tb-btn", type: "button", onClick: () => stepFind(1) }, "Next"),
       status,
       h("button", { class: "icon-btn", type: "button", "aria-label": "Close find", onClick: closeFind }, "\u00d7"),
     );
@@ -738,12 +818,18 @@ function openFind(initial?: string, opts: { focus?: boolean } = {}): void {
   }
 }
 
+function stepFind(delta: number): void {
+  if (view === "edit") edit.findStep(delta);
+  else reading.findStep(delta);
+}
+
 function closeFind(): void {
   findbar.hidden = true;
   clear(findbar);
   findInput = null;
   findStatus = null;
   reading.clearFind();
+  edit.clearFind();
 }
 
 /**
@@ -756,6 +842,12 @@ async function openHit(file: string, hit: SearchHit | null, query: string): Prom
   if (view === "source") {
     if (hit && hit.ordinal >= 0) source.showMatch(hit.line - 1, query);
     else source.goToLine(0);
+    return;
+  }
+  if (view === "edit") {
+    openFind(query, { focus: false });
+    edit.scrollToLine(hit && hit.ordinal >= 0 ? hit.line - 1 : 0);
+    if (hit && hit.ordinal >= 0) edit.findSet(query);
     return;
   }
   openFind(query, { focus: false });
@@ -845,19 +937,20 @@ async function addPictures(files: File[]): Promise<void> {
 /** Format > Insert Picture: choose files from disk. */
 async function insertPicture(): Promise<void> {
   if (!doc) return;
-  if (view === "reading") await setView("source");
+  if (view === "reading") await setView(writingMode);
   const res = await api.pickImages(doc.file);
   if (!res.ok) {
     if (res.message) toast(res.message);
     return;
   }
-  source.insertPictures(res.markdown);
+  if (view === "edit") edit.insertPictures(res.markdown);
+  else source.insertPictures(res.markdown);
 }
 
 function applyFormat(cmd: FormatCommand): void {
   if (!doc) return;
-  if (view === "reading" && reading.formatInline(cmd)) return;
-  if (view === "reading") return toast("Click a paragraph and press its pencil (Cmd+E) to format it, or use the Source view.");
+  if (view === "edit") return edit.command(cmd);
+  if (view === "reading") return toast("Switch to the Edit view (Cmd+Alt+2) to format text.");
   const el = document.activeElement as HTMLElement | null;
   // A format key pressed in the find box or a note box is not meant for the chapter.
   if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA") && !el.closest("#source")) return;
@@ -930,7 +1023,7 @@ async function newChapter(): Promise<void> {
   const title = await askText("New chapter", { confirm: "Create", hint: "Its file name is built from the title. You can rename it later." });
   if (!title) return;
   await restructure(() => api.createChapter(title));
-  if (doc && view === "reading") await setView("source");
+  if (doc && view === "reading") await setView(writingMode);
 }
 
 async function renameChapter(): Promise<void> {
@@ -1035,7 +1128,6 @@ async function runCheck(): Promise<void> {
     if (!doc || doc.file !== file) return;
     hints = found;
     source.setHints(found);
-    reading.setHints(found);
     renderStatus();
     if (document.getElementById("hints-pop")) void showHints(false);
   } catch {
@@ -1076,8 +1168,7 @@ async function showHints(whole: boolean): Promise<void> {
       const go = async () => {
         if (!doc || doc.file !== g.file) await openChapter(g.file);
         if (view === "reading") await setView(writingMode);
-        source.goToLine(hint.line);
-        source.focus();
+        goToLine(hint.line);
       };
       list.append(
         h(
@@ -1169,6 +1260,9 @@ api.onMenu((cmd: MenuCommand) => {
     case "view-reading":
       void setView("reading");
       break;
+    case "view-edit":
+      void setView("edit");
+      break;
     case "view-source":
       void setView("source");
       break;
@@ -1191,7 +1285,11 @@ api.onMenu((cmd: MenuCommand) => {
     case "redo": {
       // The editor keeps its own history; a note box or the find box uses the browser's.
       const el = document.activeElement as HTMLElement | null;
-      if (reading.isEditing && el?.closest(".inline-edit") && reading.editorUndo(cmd === "redo")) break;
+      if (view === "edit") {
+        if (cmd === "undo") edit.undo();
+        else edit.redo();
+        break;
+      }
       if (el?.closest("#source")) cmd === "undo" ? source.undo() : source.redo();
       else document.execCommand(cmd);
       break;
@@ -1207,7 +1305,7 @@ api.onMenu((cmd: MenuCommand) => {
       break;
     case "edit-block":
       if (view === "reading") reading.editBlock();
-      else toast("You are in the Source view: the whole chapter is already editable.");
+      else toast("Editing already: this view is the one for writing.");
       break;
     case "toggle-panel":
       togglePanel();

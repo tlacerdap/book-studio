@@ -4,10 +4,7 @@
 // block is; we draw the cards next to them. Notes are edited by changing the markdown text, never the page, so adding
 // a note does not re-render anything.
 
-import { deleteNote, editNote, insertNote, joinLines, splitLines, stripNotes, type Note, type NoteKind, type NoteThread } from "../../core/notes.ts";
-import type { FormatCommand } from "../../core/format.ts";
-import { paragraphs, rangeFor, replaceRange, type LineRange, type Scope } from "../../core/ranges.ts";
-import { SourceView } from "./source.ts";
+import { deleteNote, editNote, insertNote, stripNotes, type Note, type NoteKind, type NoteThread } from "../../core/notes.ts";
 import { blockForLine, blockStartingAt, insertAfterLine, parseSrc, placeNotes, splitQuote, withQuote, type BlockRange, type NoteGroup } from "../../core/notemap.ts";
 import { clear, h } from "./dom.ts";
 
@@ -24,10 +21,8 @@ export interface ReadingHooks {
   onPages(pages: number): void;
   /** Put text on the clipboard. */
   onCopy(text: string): void;
-  /** A paragraph is being edited in place (true) or the editing ended (false). */
-  onEditing(open: boolean): void;
-  /** Pictures pasted or dropped into the editor: keep them in the book, and give back the markdown for them. */
-  onPictures(files: File[]): Promise<string[] | null>;
+  /** The reader asked to edit the paragraph that starts at this line of the file. */
+  onEditRequest(line: number): void;
   /** How many times the searched words occur on the page, and which one is the current one (-1 if none). */
   onFound(count: number, index: number): void;
 }
@@ -116,8 +111,6 @@ export class ReadingView {
   private resizer: ResizeObserver;
   private pencil: HTMLElement;
   private wrapLeft = 12;
-  private blockEdit: { el: HTMLElement; host: HTMLElement; cm: SourceView; scope: Scope; work: string; range: LineRange; top: number; original: string } | null = null;
-  private hints: { line: number; column: number; length: number; message: string }[] = [];
 
   constructor(
     private root: HTMLElement,
@@ -166,7 +159,6 @@ export class ReadingView {
     this.editing = null;
     this.focusIds = [];
     this.active = null;
-    this.closeEditor();
     const token = ++this.renderToken;
     this.loading.hidden = false;
     this.pendingScroll = keepScroll;
@@ -366,15 +358,11 @@ export class ReadingView {
     this.placePencil();
   }
 
-  // ---- editing in place -----------------------------------------------------------------------
+  // ---- editing --------------------------------------------------------------------------------
 
-  get isEditing(): boolean {
-    return this.blockEdit !== null;
-  }
-
-  /** The pencil beside the paragraph that was clicked: press it (or Cmd+E) to edit there. */
+  /** The pencil beside the paragraph that was clicked: press it (or Cmd+E) to edit that paragraph on the page. */
   private placePencil(): void {
-    const b = this.ready && !this.blockEdit && this.active ? this.blocks.find((x) => x.src === this.active) : null;
+    const b = this.ready && this.active ? this.blocks.find((x) => x.src === this.active) : null;
     if (!b) {
       this.pencil.hidden = true;
       return;
@@ -384,183 +372,13 @@ export class ReadingView {
     this.pencil.style.top = `${b.top * this.zoom + 2}px`;
   }
 
-  /** The words the writing checks found, so they are underlined in the editor too. */
-  setHints(hints: { line: number; column: number; length: number; message: string }[]): void {
-    this.hints = hints;
-    this.markHints();
-  }
-
-  private markHints(): void {
-    const ed = this.blockEdit;
-    if (!ed) return;
-    ed.cm.setHints(this.hints.filter((h) => h.line >= ed.range.from && h.line <= ed.range.to).map((h) => ({ ...h, line: h.line - ed.range.from })));
-  }
-
-  /**
-   * Edit the clicked paragraph where it stands, in the same markdown editor as the Source view (colours, search, undo,
-   * spell check, underlined hints, pasted pictures, the format bar). One switch widens it to the whole section or the
-   * whole chapter; the arrows go to the paragraph before or after. Cmd+Enter keeps the changes, Esc drops them all.
-   */
+  /** Ask for the clicked paragraph to be opened in the Edit view. */
   editBlock(): void {
-    if (this.blockEdit) return this.blockEdit.cm.focus();
     const src = this.active;
     if (!this.ready || !src) return this.hooks.onToast("Click a paragraph first, then edit it.");
-    const block = this.blocks.find((x) => x.src === src);
-    if (!block) return;
     const { lineMap } = stripNotes(this.text);
     const line = lineMap[parseSrc(src).first];
-    if (line === undefined) return;
-    const host = h("div", { class: "ie-host" });
-    const el = h("div", { class: "inline-edit" });
-    const cm = new SourceView(host, {
-      onChange: () => this.refreshEditorHeader(),
-      onImages: (files) => void this.hooks.onPictures(files).then((md) => md && this.blockEdit?.cm.insertPictures(md)),
-      onKeep: () => this.commitEditor(),
-      onCancel: () => this.closeEditor(),
-    });
-    this.blockEdit = { el, host, cm, scope: "paragraph", work: this.text, range: { from: 0, to: 0 }, top: Math.max(0, block.top * this.zoom - 8), original: this.text };
-    this.pencil.hidden = true;
-    this.stage.append(el);
-    this.hooks.onEditing(true);
-    this.loadRange(line);
-  }
-
-  /** Show the lines of the current scope around `line` in the editor. */
-  private loadRange(line: number): void {
-    const ed = this.blockEdit;
-    if (!ed) return;
-    const lines = splitLines(ed.work);
-    ed.range = rangeFor(ed.scope, lines, line);
-    const body = lines.slice(ed.range.from, ed.range.to + 1).map((l) => l.body).join("\n");
-    ed.cm.setText(body);
-    ed.cm.resetHistory();
-    this.markHints();
-    this.drawEditor(line - ed.range.from);
-  }
-
-  private drawEditor(cursorLine: number): void {
-    const ed = this.blockEdit;
-    if (!ed) return;
-    const z = this.zoom;
-    clear(ed.el);
-    const scopes: [Scope, string][] = [["paragraph", "Paragraph"], ["section", "Section"], ["chapter", "Chapter"]];
-    const seg = h("div", { class: "seg small", role: "group", "aria-label": "How much to edit" });
-    for (const [key, label] of scopes) seg.append(h("button", { type: "button", "aria-pressed": String(ed.scope === key), onClick: () => this.setScope(key) }, label));
-    const paragraphMode = ed.scope === "paragraph";
-    ed.el.style.cssText = `left:${this.wrapLeft}px;top:${ed.scope === "chapter" ? 0 : ed.top}px;width:${FRAME_WIDTH * z}px`;
-    ed.el.append(
-      h(
-        "div",
-        { class: "ie-head" },
-        h("span", { class: "ie-label" }, "Editing"),
-        seg,
-        h("span", { class: "grow" }),
-        paragraphMode ? h("button", { class: "tb-btn", type: "button", title: "The paragraph before this one", onClick: () => this.step(-1) }, "\u2191 Previous") : "",
-        paragraphMode ? h("button", { class: "tb-btn", type: "button", title: "The paragraph after this one", onClick: () => this.step(1) }, "\u2193 Next") : "",
-      ),
-      ed.host,
-      h(
-        "div",
-        { class: "ie-row" },
-        h("span", { class: "ie-hint" }, "Cmd+Enter keeps all your changes. Esc drops them. Cmd+F finds."),
-        h("button", { class: "tb-btn", type: "button", onClick: () => this.closeEditor() }, "Cancel"),
-        h("button", { class: "tb-btn primary", type: "button", onClick: () => this.commitEditor() }, "Keep changes"),
-      ),
-    );
-    ed.cm.focus();
-    if (cursorLine > 0) ed.cm.goToLine(cursorLine);
-    const top = ed.el.offsetTop;
-    if (top < this.scroller.scrollTop || top + 120 > this.scroller.scrollTop + this.scroller.clientHeight) this.scroller.scrollTop = Math.max(0, top - 80);
-  }
-
-  private refreshEditorHeader(): void {
-    /* the header has nothing that depends on what is typed */
-  }
-
-  /** Put what is in the editor into the working text (not yet saved), and say how many lines it now covers. */
-  private applyEditor(): void {
-    const ed = this.blockEdit;
-    if (!ed) return;
-    const lines = splitLines(ed.work);
-    const next = replaceRange(lines, ed.range, ed.cm.text);
-    const delta = next.length - lines.length;
-    ed.work = joinLines(next);
-    ed.range = { from: ed.range.from, to: ed.range.to + delta };
-  }
-
-  private setScope(scope: Scope): void {
-    const ed = this.blockEdit;
-    if (!ed || ed.scope === scope) return;
-    const at = ed.range.from + ed.cm.cursorLine;
-    this.applyEditor();
-    ed.scope = scope;
-    this.loadRange(Math.min(at, splitLines(ed.work).length - 1));
-  }
-
-  /** Go to the paragraph before (-1) or after (1), keeping what was typed. */
-  private step(delta: -1 | 1): void {
-    const ed = this.blockEdit;
-    if (!ed) return;
-    this.applyEditor();
-    const lines = splitLines(ed.work);
-    const all = paragraphs(lines);
-    const i = all.findIndex((r) => r.from === ed.range.from);
-    const target = all[(i < 0 ? 0 : i) + delta];
-    if (!target) return this.hooks.onToast(delta < 0 ? "This is the first paragraph." : "This is the last paragraph.");
-    this.loadRange(target.from);
-    // Follow the paragraph down or up the page when it can be found there.
-    const { lineMap } = stripNotes(this.text);
-    const k = lineMap.findIndex((l) => l >= target.from);
-    const range = k >= 0 ? blockForLine(this.blocks, k) : null;
-    const b = range && this.blocks.find((x) => x.src === range.src);
-    if (b) {
-      ed.top = Math.max(0, b.top * this.zoom - 8);
-      ed.el.style.top = `${ed.top}px`;
-    }
-  }
-
-  private commitEditor(): void {
-    const ed = this.blockEdit;
-    if (!ed) return;
-    this.applyEditor();
-    const next = ed.work;
-    const changed = next !== ed.original;
-    this.closeEditor();
-    if (changed) this.hooks.onTextChange(next);
-  }
-
-  closeEditor(): void {
-    const ed = this.blockEdit;
-    if (!ed) return;
-    this.blockEdit = null;
-    ed.cm.destroy();
-    ed.el.remove();
-    this.hooks.onEditing(false);
-    this.placePencil();
-  }
-
-  /** A formatting command (bold, a list...) applied in the open editor. False if none is open. */
-  formatInline(cmd: FormatCommand): boolean {
-    if (!this.blockEdit) return false;
-    this.blockEdit.cm.format(cmd);
-    return true;
-  }
-
-  editorUndo(redo: boolean): boolean {
-    if (!this.blockEdit) return false;
-    if (redo) this.blockEdit.cm.redo();
-    else this.blockEdit.cm.undo();
-    return true;
-  }
-
-  editorFind(): boolean {
-    if (!this.blockEdit) return false;
-    this.blockEdit.cm.openFind();
-    return true;
-  }
-
-  get editorHasFocus(): boolean {
-    return !!this.blockEdit?.cm.hasFocus;
+    if (line !== undefined) this.hooks.onEditRequest(line);
   }
 
   /**

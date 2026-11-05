@@ -3,6 +3,11 @@
 @font-face { font-family: "Hanken Grotesk"; font-weight: 400; src: url("bookstudio://assets/styles/fonts/hanken-grotesk/HankenGrotesk-Regular.ttf"); }
 @font-face { font-family: "Hanken Grotesk"; font-weight: 600; src: url("bookstudio://assets/styles/fonts/hanken-grotesk/HankenGrotesk-Semibold.ttf"); }
 @font-face { font-family: "Newsreader"; font-weight: 400; src: url("bookstudio://assets/styles/fonts/newsreader/Newsreader-Regular.ttf"); }
+@font-face { font-family: "Newsreader"; font-weight: 400; font-style: italic; src: url("bookstudio://assets/styles/fonts/newsreader/Newsreader-Italic.ttf"); }
+@font-face { font-family: "Hanken Grotesk"; font-weight: 400; font-style: italic; src: url("bookstudio://assets/styles/fonts/hanken-grotesk/HankenGrotesk-Italic.ttf"); }
+@font-face { font-family: "Hanken Grotesk"; font-weight: 600; font-style: italic; src: url("bookstudio://assets/styles/fonts/hanken-grotesk/HankenGrotesk-SemiboldItalic.ttf"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 700; src: url("bookstudio://assets/styles/fonts/jetbrains-mono/JetBrainsMono-Bold.ttf"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-style: italic; src: url("bookstudio://assets/styles/fonts/jetbrains-mono/JetBrainsMono-Italic.ttf"); }
 @font-face { font-family: "JetBrains Mono"; font-weight: 400; src: url("bookstudio://assets/styles/fonts/jetbrains-mono/JetBrainsMono-Regular.ttf"); }
 
 :root {
@@ -461,3 +466,7 @@ button { font: inherit; color: inherit; }
 .ie-host .cm-content { padding: 0 10px; }
 .ie-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 .ie-hint { flex: 1; font-size: 12px; color: var(--ink-3); }
+
+/* ---- The Edit view: the page itself, edited ----------------------------------------------------- */
+
+#edit { overflow: auto; background: var(--desk); position: relative; }
