@@ -34,7 +34,7 @@ await build({
 });
 
 await build({
-  entryPoints: { "paged-driver": "core/browser/paged-driver.ts", "reading-bridge": "core/browser/reading-bridge.ts" },
+  entryPoints: { "paged-driver": "core/browser/paged-driver.ts", "reading-bridge": "core/browser/reading-bridge.ts", "diagram-driver": "core/browser/diagram-driver.ts" },
   outdir: "dist/browser",
   bundle: true,
   platform: "browser",
@@ -44,6 +44,12 @@ await build({
 });
 
 fs.copyFileSync("node_modules/pagedjs/dist/paged.polyfill.js", "dist/browser/paged.polyfill.js");
+// Diagrams: mermaid draws them in a hidden window (see app/main/diagrams.ts).
+fs.copyFileSync("node_modules/mermaid/dist/mermaid.min.js", "dist/browser/mermaid.min.js");
+fs.writeFileSync(
+  "dist/browser/diagram.html",
+  `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src bookstudio://assets 'unsafe-eval'; style-src 'unsafe-inline'; font-src bookstudio://assets"></head><body><script src="mermaid.min.js"></script><script src="diagram-driver.js"></script></body></html>\n`,
+);
 fs.writeFileSync("dist/browser/paged-config.js", "window.PagedConfig = { auto: false };\n");
 
 // The app: main process (ESM), preload (CommonJS, required by the sandbox), the checker's worker, and the window's UI.

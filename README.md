@@ -23,14 +23,28 @@ reloads silently, or, if you have unsaved edits, a banner asks Reload or Keep mi
 - **Search:** the box at the top of the left panel searches every chapter at once (`Shift+F` puts the cursor there). It lists the chapters that have the words, how many times, and under each the sentences with the words marked, the section they are in and the line of the file. Click one, or move through them with the arrow keys (Enter goes to the next, Shift+Enter back), and that chapter opens at that spot with every occurrence marked and the find bar ready for Next and Previous. Esc clears the search and brings the chapter list back. It searches what the page shows (not the markdown marks, the notes or the link addresses) and ignores capitals and curly versus straight quotes; the chapter title counts too. In the source view the same results select the words in the markdown.
 - **Reading view:** the chapter laid out exactly as it prints (same styles, same pagination rules). Read only; click a
   block, or select text, then add a note. Blocks with notes get a thin rule on their left; notes are cards in the margin.
-- **Source view:** the markdown in CodeMirror, editable. Cmd/Ctrl+S saves; leaving a chapter or closing the window with
-  unsaved edits asks first.
+- **Write view and Source view:** the toolbar has three views. *Reading* is the chapter as it prints, with your notes. *Write* puts the markdown on the left and the printed pages on the right, which follow what you type a moment after you stop and scroll to where the cursor is. *Source* is the markdown alone. The editor is CodeMirror, with the system's spell check (so macOS Writing Tools work in it). Formatting is markdown underneath and has keys and a bar: Bold `B`, Italic `I`, Code `Alt+C`, Section heading `2`, Subheading `3`, Bulleted list `Shift+8`, Numbered list `Shift+7`, Quote `Shift+.`, Link `L`, and Table, Diagram and Picture from the Format menu. A command applied again takes the formatting off.
+- **Saving and history:** a chapter saves itself a moment after you stop typing ("Autosave on" in the status bar turns it off). It never writes over a file that someone else (Claude Code, another editor) changed since you opened it: it shows the banner instead. Every save keeps a version in the app's data folder, not in the book (File > Version History, `Shift+H`): pick one to see the lines that differ from your text now and restore it; the version it replaces stays in the history. The status bar shows words, reading time and the chapter's pages.
+- **Chapters:** File > New Chapter (`N`) makes the next numbered file with its title. The open chapter has buttons under it in the left panel: move up or down (the two chapters trade file numbers, and the "Chapter N" in their titles when both have one), rename (the file name; links from other chapters follow) and delete (to the Trash, after warning which chapters link to it). Parts come from the book's index file, which the app does not edit. `K` opens a quick "go to" box for any chapter or heading of the book.
+- **Page limit and known chapters:** click the length in the left panel to set a page limit (`pages:` in book.yaml). The panel shows "114 of 126 pages", a bar and how many pages are to spare or over. *Mark as known* (under the open chapter) keeps the file but leaves it out of the PDF, the exports, the page total and the flashcards; `known:` in book.yaml lists them.
+- **Writing hints:** the status bar counts things worth a look in the chapter; click it for the list (each line opens the place), or check the whole book. Two kinds: the book's own `rules` (words that must not appear, with the reason you wrote) and acronyms used twice or more before they are explained (explained means `Full name (ABC)`, `ABC (full name)`, `ABC stands for` or bold). *Ignore* on a term adds it to `terms:`. The words are underlined in the editor.
+- **Notes inbox:** the Notes tab of the left panel lists every question, change request and "lost me" of the book: open, answered or all, by kind, or by words. Click one and the chapter opens at its paragraph.
+- **Study:** the Study button (`Alt+S`) makes flashcards from the chapters' `**Q:** ... **A:** ...` interview answers (with their cue line as the hint), their numbered drill lines (`- **1. Question?** answer`) and your own questions that Claude answered. Say the answer, reveal it, then mark *Missed it* or *Got it*: a missed card comes back in the same session, a known one after 1, 3, 7, 16 and 35 days. Progress is kept on this computer. Known chapters are left out.
+- **Pictures and diagrams:** paste or drop a picture on the text, or Format > Insert Picture. It is copied into `images/` in the book and the chapter gets `![describe it](../images/name.png)`. In print, pictures are grey (the book is monochrome) and kept on one page; web addresses are never fetched. A fenced block with the word `mermaid` after the backticks is drawn as a diagram (flowchart, sequence, and the other [mermaid](https://mermaid.js.org) kinds), in grey, once, and kept; a mistake in it shows as a note in its place. The command-line `pdf` leaves diagrams out; the app draws them.
+- **Export** (File > Export): the book as an EPUB; as one web page that holds its own fonts and pictures; one chapter as a PDF; every chapter as its own PDF. Known chapters are left out of the book exports. The EPUB has been checked as well-formed XML with a working contents, not with a store's validator.
+- **Focus mode** (`Alt+F`) shows only the text, in a narrow column; Esc comes back. **Appearance** (View) is light, dark or the system's; the printed pages stay white.
 - **Print PDF:** saves, builds `build/<output>.pdf`, runs the checker, shows a report whose lines open the chapter
   they belong to, then opens the PDF in your viewer.
 
 | Keys (Cmd on macOS, Ctrl elsewhere) | |
 | --- | --- |
-| `/` | switch Reading and Source |
+| `/` | switch between Reading and writing |
+| `Alt+1`, `Alt+2`, `Alt+3` | Reading, Write, Source |
+| `N` | new chapter |
+| `K` | go to a chapter or heading |
+| `Shift+H` | version history |
+| `Alt+S` | study flashcards |
+| `Alt+F` | focus mode |
 | `S` | save |
 | `Shift+M` | add a note to the selected block |
 | `\` | show or hide the left panel |
@@ -148,9 +162,17 @@ language: en                       # document language and hyphenation
 chapters: chapters/*.md            # glob; chapters are ordered by file name
 output: ai-engineer-field-guide    # the PDF is build/ai-engineer-field-guide.pdf
 index: INDEX.md                    # optional: groups chapters into Parts (see below)
+pages: 126                         # optional: the page limit; the left panel shows how far you are
+known: [02-ch02-python.md]         # optional: chapters kept in the folder but left out of the PDF (the app edits this)
+terms: [MCP, RAG]                  # optional: words the reader knows, so the writing hints do not ask about them
+rules:                             # optional: words that must not appear; shown as writing hints
+  - "C#"
+  - forbid: "^Remember:"
+    regex: true
+    message: No Remember sections
 ```
 
-Unknown keys are rejected, so a typo cannot pass silently. A chapter file starts with `# Chapter N - Title`
+Unknown keys are rejected, so a typo cannot pass silently. The app changes `pages`, `known` and `terms` for you and keeps your comments; it never creates a book.yaml. A chapter file starts with `# Chapter N - Title`
 (or `# Appendix A - Title`); that line becomes the opening-page label and title. A line under it of the form
 `Level: [B] | Priority: [Core]` becomes the small level line. Chapter numbers for `--chapters` and for Parts
 are the leading digits of the file name.

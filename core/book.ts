@@ -95,9 +95,12 @@ export function selectChapters(book: BookConfig, spec?: string[]): string[] {
   return files.filter((f) => wanted.has(f));
 }
 
-export function loadChapter(file: string, md: MarkdownIt, lineMap?: { text: string; lineMap: number[] }): Chapter {
+/** Where a picture's file is shown from: the reading view serves it under its own address, the PDF reads it from disk. */
+export type ImageUrl = (abs: string) => string;
+
+export function loadChapter(file: string, md: MarkdownIt, lineMap?: { text: string; lineMap: number[] }, imageUrl?: ImageUrl): Chapter {
   const source = lineMap ?? stripNotes(fs.readFileSync(file, "utf8"));
-  const env = {};
+  const env = { chapterDir: path.dirname(file), imageUrl };
   const tokens = md.parse(source.text, env);
   const h1 = tokens.findIndex((t) => t.type === "heading_open" && t.tag === "h1");
   const name = path.basename(file);
@@ -153,9 +156,15 @@ export function assignParts(chapters: Chapter[], mapping: Map<number, [number, s
   }
 }
 
-export function readChapters(book: BookConfig, files: string[]): Chapter[] {
+/** A picture the book owns may be shown; anything outside the book's folder is not. */
+export function insideBook(book: BookConfig, abs: string): boolean {
+  const rel = path.relative(book.root, abs);
+  return !!rel && !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
+export function readChapters(book: BookConfig, files: string[], imageUrl?: ImageUrl): Chapter[] {
   const md = makeMarkdown(new Set(files.map((f) => path.basename(f))));
-  const chapters = files.map((f) => loadChapter(f, md));
+  const chapters = files.map((f) => loadChapter(f, md, undefined, imageUrl));
   assignParts(chapters, readIndex(book));
   return chapters;
 }

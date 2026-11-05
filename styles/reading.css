@@ -23,3 +23,12 @@ a { cursor: pointer; }
 ::highlight(find-match) { background-color: rgba(120, 170, 255, 0.38); color: inherit; }
 ::highlight(find-current) { background-color: rgba(60, 120, 255, 0.6); color: inherit; }
 ::highlight(note-pending) { background-color: rgba(255, 214, 102, 0.85); color: inherit; }
+
+/* The desk the pages lie on follows the app's dark mode; the pages themselves stay white. */
+@media (prefers-color-scheme: dark) {
+  html { background: #1b1a19; }
+  ::selection { background: #3f5a85; }
+}
+
+/* A picture the chapter points at but the book does not have. */
+.missing-image { color: #8a2a1c; }

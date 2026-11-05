@@ -1,7 +1,7 @@
 // Book Studio's main process: windows, the menu, the book on disk, and the print job. The window itself never touches
 // the file system; it asks for one named thing at a time through the preload bridge (see app/shared/api.ts).
 
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, protocol, session, shell, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, protocol, session, shell, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,13 @@ import { searchFiles, type SearchResult } from "../../core/search.ts";
 import { bookEvidence, chapterFiles, ConfigError, isBook, loadBook, outputPdf, addTerm, setKnown, setPageBudget, writeDefaultBookYaml, type BookConfig } from "../../core/config.ts";
 import { checkText } from "../../core/writing-rules.ts";
 import { inboxNotes } from "../../core/inbox.ts";
+import { exportEpub, exportHtml } from "../../core/export.ts";
+import { setDiagramProvider } from "../../core/diagrams.ts";
+import { DiagramPainter } from "./diagrams.ts";
+import { buildPdf } from "../../core/pdf.ts";
+import { selectChapters } from "../../core/book.ts";
+import crypto from "node:crypto";
+import { IMAGE_EXTENSIONS, imageMarkdown, imageName, MAX_IMAGE_BYTES, sniffImage } from "../../core/images.ts";
 import { allCards } from "../../core/study.ts";
 import { listChapters } from "../../core/book.ts";
 import { ChapterError, createChapter, linksTo, moveChapter, renameChapter } from "../../core/chapters.ts";
@@ -22,7 +29,7 @@ import { PACKAGE_ROOT, STYLES } from "../../core/paths.ts";
 import type { CheckReport } from "../../core/check.ts";
 import { PageCounter, type PageCounts } from "./pagecount.ts";
 import { applyPrintSwitches, renderPdf } from "../../electron/render-pdf.ts";
-import type { BookInfo, ChapterText, MenuCommand, OpenResult, PrintOutcome, UnsavedChoice } from "../shared/api.ts";
+import type { BookInfo, ChapterText, ExportKind, ExportOutcome, MenuCommand, OpenResult, PrintOutcome, UnsavedChoice } from "../shared/api.ts";
 
 const SCHEME = "bookstudio";
 const APP_ORIGIN = `${SCHEME}://app/`;
@@ -44,6 +51,20 @@ let watcher: fs.FSWatcher | null = null;
 /** Until this time a change to book.yaml is the app's own (the budget, a known chapter) and moves no page. */
 let ownYamlUntil = 0;
 let counter: PageCounter | null = null;
+let painter: DiagramPainter | null = null;
+
+/** Draw the diagrams of some chapters (every one of the book's when no list is given) before a page is built from them. */
+async function drawDiagrams(texts?: string[]): Promise<void> {
+  if (!painter || !book) return;
+  const all = texts ?? chapterFiles(book).map((f) => {
+    try {
+      return fs.readFileSync(f, "utf8");
+    } catch {
+      return "";
+    }
+  });
+  await painter.ensure(all);
+}
 
 // ------------------------------------------------------------------------------------------------
 // What the window may load: its own files, the shared styles and scripts, the prepared reading pages. Nothing else.
@@ -99,6 +120,11 @@ function handleProtocol(req: Request): Response {
       if (rel.startsWith("styles/")) return serve(STYLES, rel.slice("styles/".length));
       if (rel.startsWith("browser/")) return serve(path.join(PACKAGE_ROOT, "dist", "browser"), rel.slice("browser/".length));
       return new Response("not found", { status: 404 });
+    case "book": {
+      // The pictures of the open book, and only pictures, only inside the book's folder.
+      if (!book || !IMAGE_EXTENSIONS.includes(path.extname(rel).toLowerCase())) return new Response("not found", { status: 404 });
+      return serve(book.root, rel);
+    }
     case "reading": {
       const html = readingPages.get(rel.replace(/\.html$/, ""));
       return html === undefined ? new Response("not found", { status: 404 }) : new Response(html, { headers: { "content-type": TYPES[".html"] } });
@@ -111,6 +137,33 @@ function handleProtocol(req: Request): Response {
 // ------------------------------------------------------------------------------------------------
 // Recent books
 // ------------------------------------------------------------------------------------------------
+
+// ------------------------------------------------------------------------------------------------
+// Settings of the app itself (not of a book)
+// ------------------------------------------------------------------------------------------------
+
+type Theme = "system" | "light" | "dark";
+const settingsFile = () => path.join(app.getPath("userData"), "settings.json");
+
+function readTheme(): Theme {
+  try {
+    const t = (JSON.parse(fs.readFileSync(settingsFile(), "utf8")) as { theme?: string }).theme;
+    return t === "light" || t === "dark" ? t : "system";
+  } catch {
+    return "system";
+  }
+}
+
+function setTheme(theme: Theme): void {
+  nativeTheme.themeSource = theme;
+  try {
+    fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
+    fs.writeFileSync(settingsFile(), JSON.stringify({ theme }, null, 2));
+  } catch {
+    /* the choice just is not remembered */
+  }
+  buildMenu();
+}
 
 const recentFile = () => path.join(app.getPath("userData"), "recent.json");
 
@@ -265,6 +318,7 @@ async function print(): Promise<PrintOutcome> {
   const b = requireBook();
   printing = true;
   try {
+    await drawDiagrams();
     const result = await printBook(b, {
       render: (job) => renderPdf(job),
       check: checkInWorker,
@@ -301,6 +355,56 @@ function handle<A extends unknown[], R>(channel: string, fn: (...a: A) => R | Pr
     trusted(e);
     return fn(...(args as A));
   });
+}
+
+/** Write the book, or a chapter, in another shape. Asks where to put it, and shows the result in the folder. */
+async function exportRun(kind: ExportKind, file: string | null): Promise<ExportOutcome> {
+  const b = requireBook();
+  const win = mainWindow!;
+  const build = path.join(b.root, "build");
+  const cancelled = { ok: false as const, cancelled: true, message: "" };
+  const say = (m: string) => win.webContents.send("export:progress", m);
+  try {
+    await drawDiagrams();
+    if (kind === "epub" || kind === "html") {
+      const ext = kind === "epub" ? "epub" : "html";
+      fs.mkdirSync(build, { recursive: true });
+      const r = await dialog.showSaveDialog(win, { title: kind === "epub" ? "Export as EPUB" : "Export as one web page", defaultPath: path.join(build, `${b.output}.${ext}`), filters: [{ name: kind === "epub" ? "EPUB e-book" : "Web page", extensions: [ext] }] });
+      if (r.canceled || !r.filePath) return cancelled;
+      const done = kind === "epub" ? exportEpub(b, r.filePath) : exportHtml(b, r.filePath);
+      shell.showItemInFolder(r.filePath);
+      return { ok: true, message: `${path.basename(r.filePath)} written: ${done.chapters} chapter${done.chapters === 1 ? "" : "s"}, ${(done.bytes / 1048576).toFixed(1)} MB.` };
+    }
+    if (printing) return { ok: false, message: "A PDF is already being made." };
+    printing = true;
+    try {
+      if (kind === "chapter-pdf") {
+        const f = chapterPath(String(file));
+        fs.mkdirSync(build, { recursive: true });
+        const r = await dialog.showSaveDialog(win, { title: "Export this chapter as PDF", defaultPath: path.join(build, `${path.basename(f, ".md")}.pdf`), filters: [{ name: "PDF", extensions: ["pdf"] }] });
+        if (r.canceled || !r.filePath) return cancelled;
+        say("Making the PDF of this chapter...");
+        const built = await buildPdf(b, { chapters: [path.basename(f)], out: r.filePath, bare: true, render: (job) => renderPdf(job) });
+        shell.showItemInFolder(built.pdf);
+        return { ok: true, message: `${path.basename(built.pdf)} written: ${built.pages} page${built.pages === 1 ? "" : "s"}.` };
+      }
+      const files = selectChapters(b);
+      if (!files.length) return { ok: false, message: "There are no chapters to export (every one is marked as known)." };
+      const r = await dialog.showOpenDialog(win, { title: "Choose a folder for the chapter PDFs", defaultPath: build, properties: ["openDirectory", "createDirectory"], buttonLabel: "Export Here" });
+      if (r.canceled || !r.filePaths[0]) return cancelled;
+      let pages = 0;
+      for (const [i, f] of files.entries()) {
+        say(`Chapter PDFs: ${i + 1} of ${files.length} (${path.basename(f, ".md")})...`);
+        pages += (await buildPdf(b, { chapters: [path.basename(f)], out: path.join(r.filePaths[0], `${path.basename(f, ".md")}.pdf`), bare: true, render: (job) => renderPdf(job) })).pages;
+      }
+      shell.openPath(r.filePaths[0]);
+      return { ok: true, message: `${files.length} PDFs written, ${pages} pages in all.` };
+    } finally {
+      printing = false;
+    }
+  } catch (e) {
+    return { ok: false, message: (e as Error).message };
+  }
 }
 
 function registerIpc(): void {
@@ -402,6 +506,38 @@ function registerIpc(): void {
     keepVersion(f, fs.readFileSync(f, "utf8"), true); // the version being replaced stays in the history
     return text;
   });
+  handle("export:run", (kind: ExportKind, file: string | null) => exportRun(kind, file));
+  handle("image:save", (chapter: string, bytes: Uint8Array) => {
+    const b = requireBook();
+    const f = chapterPath(String(chapter));
+    const data = Buffer.from(bytes as Uint8Array);
+    if (!data.length || data.length > MAX_IMAGE_BYTES) return { ok: false as const, message: "That picture is empty or larger than 25 MB." };
+    const kind = sniffImage(data);
+    if (!kind) return { ok: false as const, message: "That is not a PNG, JPEG, GIF or WebP picture." };
+    const target = path.join(b.root, "images", imageName(f, crypto.createHash("sha1").update(data).digest("hex").slice(0, 6), kind.ext));
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    if (!fs.existsSync(target)) fs.writeFileSync(target, data);
+    return { ok: true as const, markdown: [imageMarkdown(f, target)] };
+  });
+  handle("image:pick", async (chapter: string) => {
+    const b = requireBook();
+    const f = chapterPath(String(chapter));
+    const r = await dialog.showOpenDialog(mainWindow!, { title: "Insert Picture", properties: ["openFile", "multiSelections"], filters: [{ name: "Pictures", extensions: IMAGE_EXTENSIONS.map((e) => e.slice(1)) }] });
+    if (r.canceled || !r.filePaths.length) return { ok: false as const, message: "" };
+    const out: string[] = [];
+    for (const src of r.filePaths) {
+      const data = fs.readFileSync(src);
+      if (data.length > MAX_IMAGE_BYTES) return { ok: false as const, message: `${path.basename(src)} is larger than 25 MB.` };
+      const ext = path.extname(src).toLowerCase();
+      if (!IMAGE_EXTENSIONS.includes(ext)) continue;
+      if (ext !== ".svg" && !sniffImage(data)) return { ok: false as const, message: `${path.basename(src)} is not a picture.` };
+      const target = path.join(b.root, "images", imageName(f, crypto.createHash("sha1").update(data).digest("hex").slice(0, 6), ext === ".jpeg" ? ".jpg" : ext, path.basename(src)));
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      if (!fs.existsSync(target)) fs.writeFileSync(target, data);
+      out.push(imageMarkdown(f, target, path.basename(src, ext).replace(/[-_]+/g, " ")));
+    }
+    return out.length ? { ok: true as const, markdown: out } : { ok: false as const, message: "No pictures were chosen." };
+  });
   handle("book:set-budget", (pages: number | null) => {
     const b = requireBook();
     ownYamlUntil = Date.now() + 2500;
@@ -459,9 +595,10 @@ function registerIpc(): void {
       return { file: f, headings: outline(text) };
     });
   });
-  handle("reading:prepare", (file: string, text: string) => {
+  handle("reading:prepare", async (file: string, text: string) => {
     const b = requireBook();
     const f = chapterPath(String(file));
+    await drawDiagrams([String(text)]);
     const html = buildReadingHtml(b, f, String(text), { assetBase: `${SCHEME}://assets/` });
     return { url: registerReading(html) };
   });
@@ -543,6 +680,16 @@ function buildMenu(): void {
         { label: "Save", accelerator: "CmdOrCtrl+S", click: () => send("save") },
         { label: "Version History...", accelerator: "CmdOrCtrl+Shift+H", click: () => send("history") },
         { label: "Print PDF", accelerator: "CmdOrCtrl+P", click: () => send("print") },
+        {
+          label: "Export",
+          submenu: [
+            { label: "Book as EPUB...", click: () => send("export:epub") },
+            { label: "Book as One Web Page...", click: () => send("export:html") },
+            { type: "separator" },
+            { label: "This Chapter as PDF...", click: () => send("export:chapter-pdf") },
+            { label: "Every Chapter as Its Own PDF...", click: () => send("export:all-pdf") },
+          ],
+        },
         { type: "separator" },
         mac ? { role: "close" } : { role: "quit" },
       ],
@@ -550,8 +697,8 @@ function buildMenu(): void {
     {
       label: "Edit",
       submenu: [
-        { role: "undo" },
-        { role: "redo" },
+        { label: "Undo", accelerator: "CmdOrCtrl+Z", click: () => send("undo") },
+        { label: "Redo", accelerator: "Shift+CmdOrCtrl+Z", click: () => send("redo") },
         { type: "separator" },
         { role: "cut" },
         { role: "copy" },
@@ -581,6 +728,8 @@ function buildMenu(): void {
         { label: "Quote", accelerator: "CmdOrCtrl+Shift+.", click: () => send("format:quote") },
         { label: "Link", accelerator: "CmdOrCtrl+L", click: () => send("format:link") },
         { label: "Insert Table", click: () => send("format:table") },
+        { label: "Insert Picture...", click: () => send("insert-image") },
+        { label: "Insert Diagram", click: () => send("format:diagram") },
       ],
     },
     {
@@ -592,6 +741,16 @@ function buildMenu(): void {
         { label: "Switch View", accelerator: "CmdOrCtrl+/", click: () => send("toggle-view") },
         { type: "separator" },
         { label: "Show or Hide Chapters", accelerator: "CmdOrCtrl+\\", click: () => send("toggle-panel") },
+        { label: "Focus Mode", accelerator: "CmdOrCtrl+Alt+F", click: () => send("focus") },
+        {
+          label: "Appearance",
+          submenu: (["system", "light", "dark"] as const).map((t) => ({
+            label: t === "system" ? "Match the System" : t === "light" ? "Light" : "Dark",
+            type: "radio" as const,
+            checked: readTheme() === t,
+            click: () => setTheme(t),
+          })),
+        },
         { label: "Previous Chapter", accelerator: "CmdOrCtrl+[", click: () => send("prev-chapter") },
         { label: "Next Chapter", accelerator: "CmdOrCtrl+]", click: () => send("next-chapter") },
         { type: "separator" },
@@ -668,6 +827,10 @@ app.whenReady().then(() => {
     registerReading,
     (state) => mainWindow?.webContents.send("pages:update", state),
   );
+  painter = new DiagramPainter(path.join(app.getPath("userData"), "diagrams"), `${SCHEME}://assets/`);
+  setDiagramProvider(painter.lookup);
+  nativeTheme.themeSource = readTheme();
+  if (counter) counter.prepare = (text) => drawDiagrams([text]);
   registerIpc();
   buildMenu();
   createWindow();

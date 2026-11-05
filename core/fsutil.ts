@@ -4,10 +4,11 @@ import fs from "node:fs";
 import path from "node:path";
 
 /** Write to a temporary file in the same folder, then rename it over the target (atomic on one filesystem). */
-export function atomicWrite(file: string, content: string): void {
+export function atomicWrite(file: string, content: string | Uint8Array): void {
   const tmp = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${Date.now()}.tmp`);
   try {
-    fs.writeFileSync(tmp, content, "utf8");
+    if (typeof content === "string") fs.writeFileSync(tmp, content, "utf8");
+    else fs.writeFileSync(tmp, content);
     // Keep the original file's permissions.
     try {
       fs.chmodSync(tmp, fs.statSync(file).mode);

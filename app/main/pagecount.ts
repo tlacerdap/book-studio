@@ -28,6 +28,8 @@ export class PageCounter {
   private book: BookConfig | null = null;
   private cache: Record<string, number> = {};
   private generation = 0;
+  /** Called with a chapter's text before it is laid out (diagrams are drawn here). */
+  prepare: ((text: string) => Promise<void>) | null = null;
 
   constructor(
     private cacheFile: string,
@@ -117,7 +119,9 @@ export class PageCounter {
   private async count(book: BookConfig, file: string): Promise<void> {
     let html: string;
     try {
-      html = buildReadingHtml(book, file, fs.readFileSync(file, "utf8"), { assetBase: this.assetBase });
+      const text = fs.readFileSync(file, "utf8");
+      await this.prepare?.(text);
+      html = buildReadingHtml(book, file, text, { assetBase: this.assetBase });
     } catch {
       return; // a chapter that cannot be rendered has no count
     }

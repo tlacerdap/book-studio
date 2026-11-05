@@ -5,7 +5,7 @@ import { chapterId } from "../../core/ids.ts";
 import { openNotes, parseNotes, stripNotes } from "../../core/notes.ts";
 import { outline } from "../../core/notemap.ts";
 import type { SearchHit } from "../../core/search.ts";
-import type { BookHints, BookInfo, FormatCommand, MenuCommand, OpenResult, PageCounts, WritingHint } from "../shared/api.ts";
+import type { BookHints, BookInfo, ExportKind, FormatCommand, MenuCommand, OpenResult, PageCounts, WritingHint } from "../shared/api.ts";
 import { askText, openHistory, openPalette, paletteItems } from "./dialogs.ts";
 import { clear, h } from "./dom.ts";
 import { Panel } from "./panel.ts";
@@ -162,6 +162,33 @@ async function openNote(file: string, anchor: number): Promise<void> {
   reading.revealLine(Math.max(0, anchor));
 }
 
+let focusOn = false;
+let focusRestore: ViewMode | null = null;
+
+/** Hide everything but the text: only the source view, in a narrow column. Esc (or the same menu item) comes back. */
+function toggleFocus(): void {
+  if (!doc) return;
+  focusOn = !focusOn;
+  $("app").classList.toggle("focus", focusOn);
+  if (focusOn) {
+    focusRestore = view;
+    if (view !== "source") void setView("source");
+    toast("Focus mode. Press Esc to come back.");
+    source.focus();
+  } else {
+    const back = focusRestore;
+    focusRestore = null;
+    if (back && back !== view) void setView(back);
+  }
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && focusOn && !document.querySelector(".scrim")) {
+    e.preventDefault();
+    toggleFocus();
+  }
+});
+
 async function study(): Promise<void> {
   if (!book) return;
   const chapters = await api.studyCards(doc ? { file: doc.file, text: doc.text } : null);
@@ -196,6 +223,7 @@ const source = new SourceView(viewEls.source, {
     schedulePreview();
     scheduleCheck();
   },
+  onImages: (files) => void addPictures(files),
   onCursor: (line) => {
     if (view !== "split") return;
     window.clearTimeout(syncTimer);
@@ -774,6 +802,7 @@ const FORMAT_BUTTONS: { cmd: FormatCommand | "-"; label: string; title: string; 
   { cmd: "quote", label: "\u201c Quote", title: "Quote" },
   { cmd: "-", label: "", title: "" },
   { cmd: "link", label: "Link", title: "Link" },
+  { cmd: "diagram", label: "Diagram", title: "Insert a diagram, written as text and drawn by the app" },
   { cmd: "table", label: "Table", title: "Insert a table" },
 ];
 
@@ -791,6 +820,46 @@ function renderFormatbar(): void {
     const key = KEY_OF[cmd];
     bar.append(h("button", { type: "button", class: `fmt ${b.cls ?? ""}`, title: key ? `${b.title} (${mod}+${key})` : b.title, onMousedown: (e: Event) => e.preventDefault(), onClick: () => applyFormat(cmd) }, b.label));
   }
+}
+
+/** Write the book or a chapter in another shape (EPUB, a web page, PDFs). What is open is saved first. */
+async function exportBook(kind: ExportKind): Promise<void> {
+  if (!book) return;
+  if (kind === "chapter-pdf" && !doc) return;
+  await save();
+  const off = api.onExportProgress((m) => toast(m));
+  try {
+    const res = await api.exportBook(kind, doc?.file ?? null);
+    if (res.ok) toast(res.message);
+    else if (!res.cancelled) toast(res.message);
+  } finally {
+    off();
+  }
+}
+
+/** Pictures pasted or dropped into the text: keep them in the book and put them in the chapter. */
+async function addPictures(files: File[]): Promise<void> {
+  if (!doc) return;
+  const lines: string[] = [];
+  for (const f of files) {
+    const res = await api.saveImage(doc.file, new Uint8Array(await f.arrayBuffer()));
+    if (!res.ok) return toast(res.message);
+    lines.push(...res.markdown);
+  }
+  source.insertPictures(lines);
+  toast(`${lines.length === 1 ? "Picture" : "Pictures"} kept in the book's images folder. Write what it shows between the brackets.`);
+}
+
+/** Format > Insert Picture: choose files from disk. */
+async function insertPicture(): Promise<void> {
+  if (!doc) return;
+  if (view === "reading") await setView("split");
+  const res = await api.pickImages(doc.file);
+  if (!res.ok) {
+    if (res.message) toast(res.message);
+    return;
+  }
+  source.insertPictures(res.markdown);
 }
 
 function applyFormat(cmd: FormatCommand): void {
@@ -1118,9 +1187,23 @@ api.onMenu((cmd: MenuCommand) => {
     case "history":
       void showHistory();
       break;
+    case "insert-image":
+      void insertPicture();
+      break;
     case "study":
       void study();
       break;
+    case "focus":
+      toggleFocus();
+      break;
+    case "undo":
+    case "redo": {
+      // The editor keeps its own history; a note box or the find box uses the browser's.
+      const el = document.activeElement as HTMLElement | null;
+      if (el?.closest("#source")) cmd === "undo" ? source.undo() : source.redo();
+      else document.execCommand(cmd);
+      break;
+    }
     case "goto":
       void gotoPalette();
       break;
@@ -1169,6 +1252,7 @@ api.onMenu((cmd: MenuCommand) => {
       break;
     default:
       if (cmd.startsWith("format:")) applyFormat(cmd.slice(7) as FormatCommand);
+      else if (cmd.startsWith("export:")) void exportBook(cmd.slice(7) as ExportKind);
   }
 });
 

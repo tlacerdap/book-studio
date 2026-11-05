@@ -1,6 +1,6 @@
 // The source view: the chapter's markdown, editable, in CodeMirror 6.
 
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, indentWithTab, redo, undo } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
@@ -14,11 +14,11 @@ const highlight = HighlightStyle.define([
   { tag: tags.heading, fontWeight: "700", textDecoration: "none" },
   { tag: tags.strong, fontWeight: "700" },
   { tag: tags.emphasis, fontStyle: "italic" },
-  { tag: tags.monospace, color: "#5d4a2a" },
-  { tag: tags.quote, color: "#5d5b57" },
-  { tag: [tags.processingInstruction, tags.meta, tags.contentSeparator], color: "#8a8782" },
-  { tag: tags.link, textDecoration: "none", color: "#2f4f7a" },
-  { tag: tags.url, color: "#2f4f7a" },
+  { tag: tags.monospace, color: "var(--hl-code)" },
+  { tag: tags.quote, color: "var(--hl-quote)" },
+  { tag: [tags.processingInstruction, tags.meta, tags.contentSeparator], color: "var(--hl-mark)" },
+  { tag: tags.link, textDecoration: "none", color: "var(--hl-link)" },
+  { tag: tags.url, color: "var(--hl-link)" },
 ]);
 
 // Notes (HTML comments and Obsidian %% marks) get a quiet background so they are easy to tell from the text.
@@ -62,7 +62,7 @@ export class SourceView {
   private view: EditorView;
   private muted = false;
 
-  constructor(parent: HTMLElement, hooks: { onChange(text: string): void; onCursor?(line: number): void; onFocusChange?(focused: boolean): void }) {
+  constructor(parent: HTMLElement, hooks: { onChange(text: string): void; onCursor?(line: number): void; onFocusChange?(focused: boolean): void; onImages?(files: File[]): void }) {
     this.view = new EditorView({
       parent,
       state: EditorState.create({
@@ -76,6 +76,23 @@ export class SourceView {
           search({ top: true }),
           noteMarks,
           hintMarks,
+          // A picture pasted or dropped on the text is handed over to be kept in the book; the editor does not insert anything itself.
+          EditorView.domEventHandlers({
+            paste: (e) => {
+              const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+              if (!files.length || !hooks.onImages) return false;
+              e.preventDefault();
+              hooks.onImages(files);
+              return true;
+            },
+            drop: (e) => {
+              const files = [...(e.dataTransfer?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+              if (!files.length || !hooks.onImages) return false;
+              e.preventDefault();
+              hooks.onImages(files);
+              return true;
+            },
+          }),
           keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
           EditorView.updateListener.of((u) => {
             if (u.docChanged && !this.muted) hooks.onChange(u.state.doc.toString());
@@ -124,6 +141,29 @@ export class SourceView {
         return { from: l.from + h.column, to: Math.min(l.to, l.from + h.column + h.length), message: h.message };
       });
     this.view.dispatch({ effects: setHintMarks.of(marks) });
+  }
+
+  /** Put picture markdown (one or more `![alt](path)`) on its own lines at the cursor, with the alt text selected so it can be written over. */
+  insertPictures(lines: string[]): void {
+    const doc = this.view.state.doc;
+    const sel = this.view.state.selection.main;
+    const at = doc.lineAt(sel.head);
+    const blank = at.text.trim() === "";
+    const insert = (blank ? "" : "\n\n") + lines.join("\n\n") + "\n";
+    const from = blank ? at.from : at.to;
+    const to = blank ? at.to : at.to;
+    const altStart = from + (blank ? 0 : 2) + 2;
+    const alt = /^!\[([^\]]*)\]/.exec(lines[0])?.[1] ?? "";
+    this.view.dispatch({ changes: { from, to, insert }, selection: { anchor: altStart, head: altStart + alt.length }, scrollIntoView: true, userEvent: "input.paste" });
+    this.view.focus();
+  }
+
+  undo(): void {
+    undo(this.view);
+  }
+
+  redo(): void {
+    redo(this.view);
   }
 
   get hasFocus(): boolean {

@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { outputPdf, type BookConfig } from "./config.ts";
-import { readChapters, selectChapters } from "./book.ts";
+import { insideBook, readChapters, selectChapters } from "./book.ts";
 import { buildHtml } from "./html.ts";
 import { PACKAGE_ROOT, STYLES } from "./paths.ts";
 import { forPaged, readCss, resolvePageVars, styleFiles } from "./style.ts";
@@ -28,6 +28,8 @@ export interface BuildOptions {
   noRules?: boolean;
   /** Report where a piece of text ended up in the paginated page (developer aid). */
   timeoutMs?: number;
+  /** Only the chapters, with no cover and no contents (a chapter on its own). */
+  bare?: boolean;
   /** How the HTML becomes a PDF; the command line's default starts a headless Electron. */
   render?: PdfRenderer;
 }
@@ -72,7 +74,7 @@ export async function buildPdf(book: BookConfig, opts: BuildOptions = {}): Promi
   }
   let chapters;
   try {
-    chapters = readChapters(book, files);
+    chapters = readChapters(book, files, (abs) => (insideBook(book, abs) && fs.existsSync(abs) ? pathToFileURL(abs).href : ""));
   } catch (e) {
     throw new BuildError((e as Error).message);
   }
@@ -80,7 +82,7 @@ export async function buildPdf(book: BookConfig, opts: BuildOptions = {}): Promi
   if (!fs.existsSync(path.join(distBrowser, "paged-driver.js"))) throw new BuildError("book-studio is not built. Run `npm run build` in the book-studio folder.");
   const css = forPaged(resolvePageVars(readCss(styleFiles(book, opts.extraCss ?? [], { paged: true }), { absoluteUrls: true })));
   // The stylesheet is already converted; in the markup only the inline style the code-block renderer writes needs it.
-  const html = buildHtml(book, chapters, css, { head: pagedHead(distBrowser) }).replace(/style="orphans:(\d+);widows:(\d+)"/g, 'style="--pg-orphans:$1;--pg-widows:$2"');
+  const html = buildHtml(book, chapters, css, { head: pagedHead(distBrowser), chaptersOnly: opts.bare }).replace(/style="orphans:(\d+);widows:(\d+)"/g, 'style="--pg-orphans:$1;--pg-widows:$2"');
 
   const work = fs.mkdtempSync(path.join(os.tmpdir(), "book-studio-"));
   const htmlFile = path.join(work, "book.html");

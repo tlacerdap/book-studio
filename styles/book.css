@@ -427,3 +427,12 @@ sup { font-size: 0.72em; line-height: 0; vertical-align: super; }
   color: var(--color-meta);
 }
 .chapter-meta span + span { margin-left: 1.6em; }
+
+/* Diagrams drawn from text are pictures too (see core/diagrams.ts). */
+.chapter-body img.diagram { max-height: 130mm; }
+
+/* Pictures: centred, never wider than the text, kept whole on one page, printed in grey like the rest of the book. */
+.chapter-body img { max-width: 100%; max-height: 105mm; height: auto; filter: grayscale(1); }
+.chapter-body p.figure { text-align: center; margin: 1.1em 0; break-inside: avoid; }
+.chapter-body p.figure img { display: block; margin: 0 auto; }
+.missing-image { font-style: italic; }

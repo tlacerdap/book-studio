@@ -8,9 +8,11 @@
 //  - code highlighted with token classes only; the look is in styles/book.css
 //  - note comments never reach the page
 
+import path from "node:path";
 import MarkdownIt, { type MarkdownIt as Markdown, type StateCore, type Token } from "markdown-it";
 import footnote from "markdown-it-footnote";
 import { chapterId } from "./ids.ts";
+import { getDiagramProvider } from "./diagrams.ts";
 import frontMatter from "markdown-it-front-matter";
 import hljs from "highlight.js/lib/core";
 import python from "highlight.js/lib/languages/python";
@@ -242,6 +244,19 @@ export interface RenderOptions {
   lineMap?: number[];
 }
 
+/** A ```mermaid block as a picture: the drawn diagram, or a note saying it is on its way or could not be drawn. */
+function diagramFigure(tok: Token): string {
+  const provide = getDiagramProvider();
+  // Where nothing draws diagrams (searching, checking the text) a diagram adds no text, like any picture.
+  if (!provide) return "";
+  const dataSrc = tok.attrGet("data-src");
+  const attr = dataSrc ? ` data-src="${dataSrc}"` : "";
+  const d = provide(tok.content.trim());
+  if (!d) return `<p class="figure"${attr}><span class="missing-image">[the diagram is being drawn...]</span></p>\n`;
+  if (d.error || !d.svg) return `<p class="figure"${attr}><span class="missing-image">[the diagram could not be drawn: ${escapeHtml(d.error ?? "unknown error")}]</span></p>\n`;
+  return `<p class="figure"${attr}><img class="diagram" src="data:image/svg+xml;base64,${Buffer.from(d.svg).toString("base64")}" alt="Diagram" /></p>\n`;
+}
+
 export function makeMarkdown(builtFiles: Set<string>, opts: RenderOptions = {}): Markdown {
   const md = new MarkdownIt("commonmark", { typographer: true, html: false });
   md.enable(["table", "strikethrough"]);
@@ -252,6 +267,14 @@ export function makeMarkdown(builtFiles: Set<string>, opts: RenderOptions = {}):
   md.core.ruler.push("book_urls", wrapUrlsRule);
   md.core.ruler.push("book_links", linkRule(builtFiles));
   md.core.ruler.push("book_keep_with_next", keepWithNextRule);
+  md.core.ruler.push("book_figures", (state: StateCore) => {
+    const toks = state.tokens;
+    for (let i = 0; i + 2 < toks.length; i++) {
+      if (toks[i].type !== "paragraph_open" || toks[i + 1].type !== "inline") continue;
+      const kids = toks[i + 1].children ?? [];
+      if (kids.length === 1 && kids[0].type === "image") toks[i].attrJoin("class", "figure");
+    }
+  });
   if (opts.sourceLines) {
     md.core.ruler.push("book_source_lines", (state: StateCore) => {
       const map = opts.lineMap;
@@ -269,6 +292,7 @@ export function makeMarkdown(builtFiles: Set<string>, opts: RenderOptions = {}):
     const tok = tokens[idx];
     const info = tok.info.trim();
     const lang = info ? info.split(/\s+/)[0] : "";
+    if (lang === "mermaid") return diagramFigure(tok);
     const code = tok.content.replace(/\n+$/, "");
     const src = code.split("\n");
     // Visible lines only: blank lines inside code do not make a block "long".
@@ -296,6 +320,30 @@ export function makeMarkdown(builtFiles: Set<string>, opts: RenderOptions = {}):
     return self.renderToken(tokens, idx, options);
   };
   for (const r of ["paragraph_open", "bullet_list_open", "ordered_list_open", "list_item_open"]) rules[r] = withLeadIn;
+  // A picture: its address is resolved against the chapter's folder and handed to whoever builds the page (the reading
+  // view, the PDF, an export), which decides where the file is served from. A picture alone in its paragraph is centred
+  // and kept on one page; its alt text is for screen readers, a caption is ordinary text under it.
+  rules.image = (tokens, idx, _options, env) => {
+    const t = tokens[idx];
+    const e = env as { chapterDir?: string; imageUrl?: (abs: string) => string };
+    // Without a chapter to resolve against (searching, checking the text) a picture adds no text at all.
+    if (!e.chapterDir) return "";
+    const src = String(t.attrGet("src") ?? "");
+    let url = "";
+    if (/^data:image\//i.test(src)) url = src;
+    else if (!/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(src) && e.imageUrl) {
+      let rel = src;
+      try {
+        rel = decodeURI(src);
+      } catch {
+        /* an address that is not valid percent-encoding is used as written */
+      }
+      url = e.imageUrl(path.resolve(e.chapterDir, rel));
+    }
+    // Pictures from the web are never fetched: the book is read offline.
+    if (!url) return `<span class="missing-image">[image not found: ${escapeHtml(src)}]</span>`;
+    return `<img src="${escapeHtml(url)}" alt="${escapeHtml(t.content)}" />`;
+  };
   rules.link_open = (tokens, idx, options, _env, self) => (meta(tokens[idx]).drop ? "" : self.renderToken(tokens, idx, options));
   rules.link_close = (tokens, idx) => (meta(tokens[idx]).drop ? "" : "</a>");
   return md;

@@ -1,0 +1,62 @@
+/* The book as a web page or an e-book: the same words and structure as the printed book, set for a screen that reflows.
+   Used by the single-file HTML export and the EPUB. Fonts are embedded in the HTML file; an e-reader uses its own. */
+
+:root { --text: #1f1e1d; --muted: #5d5b57; --rule: #d9d6d0; --code-bg: #f3f2ef; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0 auto; padding: 1.5rem 1.25rem 4rem; max-width: 42rem; color: var(--text); background: #fff; font: 1.0625rem/1.65 "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif; }
+h1, h2, h3, h4 { font-family: "Newsreader", Georgia, serif; font-weight: 400; line-height: 1.2; }
+h1 { font-size: 2rem; margin: 0.4em 0 0.6em; }
+h2 { font-size: 1.45rem; margin: 1.8em 0 0.5em; }
+h3 { font-size: 1.15rem; font-weight: 600; font-family: inherit; margin: 1.4em 0 0.4em; }
+p { margin: 0.8em 0; }
+a { color: inherit; text-decoration-color: #9a978f; text-underline-offset: 2px; }
+strong { font-weight: 600; }
+ul, ol { padding-left: 1.4em; }
+li { margin: 0.3em 0; }
+blockquote { margin: 1em 0; padding: 0 0 0 1em; border-left: 2px solid var(--rule); color: var(--muted); }
+hr { border: 0; border-top: 1px solid var(--rule); margin: 2em 0; }
+img { max-width: 100%; height: auto; }
+p.figure { text-align: center; }
+.missing-image { font-style: italic; }
+table { border-collapse: collapse; width: 100%; margin: 1.2em 0; font-size: 0.95em; }
+th, td { border-bottom: 1px solid var(--rule); padding: 0.4em 0.6em; text-align: left; vertical-align: top; }
+th { font-weight: 600; border-bottom: 1.5px solid var(--text); }
+code { font-family: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 0.88em; background: var(--code-bg); padding: 0.05em 0.3em; border-radius: 3px; }
+pre.code { background: var(--code-bg); padding: 0.8em 1em; border-radius: 6px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; margin: 1em 0; }
+pre.code code { background: none; padding: 0; font-size: inherit; }
+pre .cl { display: block; white-space: pre; }
+.hljs-comment, .hljs-doc { color: var(--muted); font-style: italic; }
+.hljs-keyword, .hljs-built_in, .hljs-title { font-weight: 600; }
+.hljs-string { color: #3b5b3b; }
+.footnotes { font-size: 0.9em; color: var(--muted); }
+
+/* The cover and the contents are plain pages in a web document. */
+.cover { padding: 3rem 0 2.5rem; border-bottom: 1px solid var(--rule); margin-bottom: 2rem; }
+.cover-title { font-size: 2.6rem; margin: 0 0 0.3em; }
+.cover-subtitle { font-size: 1.2rem; color: var(--muted); margin: 0; }
+.cover-rule { width: 3.5rem; border-top: 1px solid var(--text); margin: 1.6rem 0; }
+.cover-author { font-weight: 600; margin: 0; }
+.cover-date { color: var(--muted); margin: 0.2em 0 0; }
+.toc-title { font-size: 1.6rem; }
+.toc-list { list-style: none; padding: 0; }
+.toc-list li { margin: 0.25em 0; }
+.toc-list a { text-decoration: none; display: block; }
+.toc-list a:hover .toc-text { text-decoration: underline; }
+.toc-leader { display: none; }
+.toc-label { display: inline-block; min-width: 4.2em; color: var(--muted); font-size: 0.9em; }
+.toc-part { margin-top: 1.1em !important; font-family: "Newsreader", Georgia, serif; font-size: 1.15rem; }
+.toc-part .toc-label { text-transform: uppercase; letter-spacing: 0.06em; font-family: "Hanken Grotesk", sans-serif; font-size: 0.7rem; font-weight: 600; }
+
+.chapter { margin-top: 4rem; padding-top: 2rem; border-top: 1px solid var(--rule); }
+.chapter.first-chapter { border-top: 0; }
+.part-eyebrow { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.75rem; color: var(--muted); margin: 0; }
+.chapter-label { font-size: 0.85rem; font-weight: 600; color: var(--muted); margin: 0 0 0.2em; }
+.chapter-title { margin-top: 0; }
+.chapter-meta span { margin-right: 1em; color: var(--muted); font-size: 0.85rem; }
+
+@media (prefers-color-scheme: dark) {
+  :root { --text: #ecebe8; --muted: #b7b4ae; --rule: #3e3c39; --code-bg: #2f2e2c; }
+  body { background: #242321; }
+  .hljs-string { color: #9fc79f; }
+}
+@media print { body { max-width: none; } .chapter { break-before: page; border: 0; } }

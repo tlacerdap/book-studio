@@ -1,7 +1,7 @@
 // Formatting commands for the editor, as plain text edits: given the text and the selection, what to replace and what to
 // select afterwards. The editor applies the result; nothing here knows about the editor.
 
-export type FormatCommand = "bold" | "italic" | "code" | "h2" | "h3" | "bullets" | "numbers" | "quote" | "link" | "table";
+export type FormatCommand = "bold" | "italic" | "code" | "h2" | "h3" | "bullets" | "numbers" | "quote" | "link" | "table" | "diagram";
 
 export interface Edit {
   from: number;
@@ -124,6 +124,18 @@ function table(text: string, a: number): Edit {
   return { from: at, to: at, insert, select: { from: cell, to: cell + "Column".length } };
 }
 
+/** A starter diagram, as text: the app draws it. */
+function diagram(text: string, a: number): Edit {
+  const span = lineSpan(text, a, a);
+  const atBlank = span.lines[0].trim() === "";
+  const before = atBlank ? "" : "\n\n";
+  const at = atBlank ? span.from : span.to;
+  const block = "```mermaid\nflowchart LR\n  A[Client] --> B[Server]\n  B --> C[(Database)]\n```\n";
+  const insert = before + block;
+  const from = at + before.length + "```mermaid\nflowchart LR\n  A[".length;
+  return { from: at, to: at, insert, select: { from, to: from + "Client".length } };
+}
+
 export function formatEdit(cmd: FormatCommand, text: string, from: number, to: number): Edit {
   const a = Math.min(from, to);
   const b = Math.max(from, to);
@@ -144,6 +156,8 @@ export function formatEdit(cmd: FormatCommand, text: string, from: number, to: n
       return link(text, a, b);
     case "table":
       return table(text, a);
+    case "diagram":
+      return diagram(text, a);
   }
 }
 

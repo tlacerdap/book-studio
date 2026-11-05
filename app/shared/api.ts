@@ -99,8 +99,17 @@ export type FileResult = { ok: true; file: string } | { ok: false; message: stri
 
 export type { FormatCommand };
 
+export type ExportKind = "epub" | "html" | "chapter-pdf" | "all-pdf";
+
+export type ExportOutcome = { ok: true; message: string } | { ok: false; cancelled?: boolean; message: string };
+
 export type MenuCommand =
+  | `export:${ExportKind}`
+  | "insert-image"
   | "study"
+  | "undo"
+  | "redo"
+  | "focus"
   | "new-chapter"
   | "history"
   | "goto"
@@ -152,6 +161,13 @@ export interface StudioApi {
   allNotes(current: { file: string; text: string } | null): Promise<ChapterNotes[]>;
   /** Flashcards from every chapter that is not marked as known. */
   studyCards(current: { file: string; text: string } | null): Promise<ChapterCards[]>;
+  /** Write the book (or a chapter) in another shape. Asks where to put it; `file` is the open chapter, for "chapter-pdf". */
+  exportBook(kind: ExportKind, file: string | null): Promise<ExportOutcome>;
+  onExportProgress(cb: (message: string) => void): () => void;
+  /** Keep a pasted or dropped picture in the book's images folder; gives the markdown to put in the chapter. */
+  saveImage(file: string, bytes: Uint8Array): Promise<{ ok: true; markdown: string[] } | { ok: false; message: string }>;
+  /** Choose picture files from disk and copy them in; gives the markdown for each. */
+  pickImages(file: string): Promise<{ ok: true; markdown: string[] } | { ok: false; message: string }>;
   /** The reader knows this word: the checks stop asking for an explanation of it. */
   addTerm(term: string): Promise<BookInfo | null>;
   /** Writing hints for a chapter, as the editor holds it. */

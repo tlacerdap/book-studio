@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { chapterFiles, type BookConfig } from "./config.ts";
-import { assignParts, fileNumber, loadChapter, readIndex } from "./book.ts";
+import { assignParts, fileNumber, insideBook, loadChapter, readIndex } from "./book.ts";
 import { buildHtml } from "./html.ts";
 import { makeMarkdown } from "./mdrender.ts";
 import { stripNotes } from "./notes.ts";
@@ -17,13 +17,16 @@ export interface ReadingOptions {
   assetBase: string;
 }
 
-const CSP = (assets: string) => `default-src 'none'; script-src ${assets}; style-src 'unsafe-inline' ${assets}; font-src ${assets}; img-src ${assets} data:; connect-src 'none'; frame-src 'none'; form-action 'none'`;
+const CSP = (assets: string, pictures: string) => `default-src 'none'; script-src ${assets}; style-src 'unsafe-inline' ${assets}; font-src ${assets}; img-src ${assets} ${pictures} data:; connect-src 'none'; frame-src 'none'; form-action 'none'`;
 
 export function buildReadingHtml(book: BookConfig, file: string, text: string, opts: ReadingOptions): string {
   const files = chapterFiles(book);
   const md = makeMarkdown(new Set(files.map((f) => path.basename(f))), { sourceLines: true });
   const { text: plain } = stripNotes(text);
-  const chapter = loadChapter(file, md, { text: plain, lineMap: [] });
+  // Pictures are served by the app from the book's own folder, under their own address.
+  const pictures = opts.assetBase.replace(/assets\/$/, "book/");
+  const imageUrl = (abs: string) => (insideBook(book, abs) && fs.existsSync(abs) ? pictures + path.relative(book.root, abs).split(path.sep).map(encodeURIComponent).join("/") : "");
+  const chapter = loadChapter(file, md, { text: plain, lineMap: [] }, imageUrl);
 
   // A Part's name shows above the title only on the Part's first chapter, as in the printed book.
   const mapping = readIndex(book);
@@ -39,7 +42,7 @@ export function buildReadingHtml(book: BookConfig, file: string, text: string, o
   const screen = fs.readFileSync(path.join(STYLES, "reading.css"), "utf8");
   const css = forPaged(resolvePageVars(readCss(styleFiles(book, [], { paged: true }), { absoluteUrls: true, urlFor }))) + "\n" + screen;
   const a = opts.assetBase;
-  const head = `  <meta http-equiv="Content-Security-Policy" content="${CSP(a)}">
+  const head = `  <meta http-equiv="Content-Security-Policy" content="${CSP(a, pictures)}">
   <base href="${a}styles/">
   <script src="${a}browser/paged-config.js"></script>
   <script src="${a}browser/paged.polyfill.js"></script>

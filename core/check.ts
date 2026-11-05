@@ -367,6 +367,8 @@ function checkTextIntegrity(pages: PageInfo[], sources: { name: string; text: st
         }
         pieces.push(cur);
       }
+      // A diagram written as text (mermaid) prints as a picture, not as these lines.
+      else if (tok.type === "fence" && tok.info.trim().split(/\s+/)[0] === "mermaid") continue;
       else if (tok.type === "fence" || tok.type === "code_block") pieces.push(...tok.content.split("\n"));
       for (const piece of pieces) {
         const key = alnum(piece);

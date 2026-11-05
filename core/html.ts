@@ -33,7 +33,7 @@ ${rows}
 </nav>`;
 }
 
-function chapter(ch: Chapter, first: boolean): string {
+export function chapterHtml(ch: Chapter, first: boolean): string {
   return `<article class="chapter${first ? " first-chapter" : ""}" id="${ch.id}">
   <header class="chapter-opener">
     ${ch.partOpens ? `<p class="part-eyebrow" id="${ch.partId}"><span class="part-label">${esc(ch.partLabel)}</span> <span class="part-name">${esc(ch.partName)}</span></p>` : ""}
@@ -67,7 +67,7 @@ ${css}
   </style>
 </head>
 <body>
-${opts.chaptersOnly ? "" : cover(book) + "\n" + toc(chapters) + "\n"}${chapters.map((c, i) => chapter(c, i === 0)).join("\n")}
+${opts.chaptersOnly ? "" : cover(book) + "\n" + toc(chapters) + "\n"}${chapters.map((c, i) => chapterHtml(c, i === 0)).join("\n")}
 </body>
 </html>
 `;
