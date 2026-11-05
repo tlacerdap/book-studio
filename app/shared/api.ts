@@ -4,6 +4,7 @@ import type { ChapterSummary } from "../../core/book.ts";
 import type { Problem } from "../../core/print.ts";
 import type { CheckReport } from "../../core/check.ts";
 import type { SearchResult } from "../../core/search.ts";
+import type { FormatCommand } from "../../core/format.ts";
 
 export interface BookInfo {
   root: string;
@@ -45,7 +46,36 @@ export interface PrintOutcome {
 
 export type UnsavedChoice = "save" | "discard" | "cancel";
 
+export interface SnapshotInfo {
+  id: string;
+  time: number;
+  bytes: number;
+  words: number;
+  label: string;
+}
+
+export interface DiffLine {
+  tag: "+" | "-" | " ";
+  text: string;
+}
+
+export interface OutlineEntry {
+  file: string;
+  headings: { level: 2 | 3; title: string; line: number }[];
+}
+
+export type FileResult = { ok: true; file: string } | { ok: false; message: string };
+
+export type { FormatCommand };
+
 export type MenuCommand =
+  | "new-chapter"
+  | "history"
+  | "goto"
+  | "view-reading"
+  | "view-split"
+  | "view-source"
+  | `format:${FormatCommand}`
   | "toggle-view"
   | "save"
   | "add-note"
@@ -71,6 +101,17 @@ export interface StudioApi {
   currentBook(): Promise<BookInfo | null>;
   refreshBook(): Promise<BookInfo | null>;
   readChapter(file: string): Promise<ChapterText>;
+  createChapter(title: string): Promise<FileResult>;
+  renameChapter(file: string, title: string): Promise<FileResult>;
+  moveChapter(file: string, step: -1 | 1): Promise<FileResult>;
+  /** Asks first; true if the chapter went to the Trash. */
+  deleteChapter(file: string): Promise<boolean>;
+  historyList(file: string): Promise<SnapshotInfo[]>;
+  /** The changed lines between an old version and the text as it is now. */
+  historyDiff(file: string, id: string, current: string): Promise<DiffLine[]>;
+  /** The text of an old version. The version it replaces is kept in the history. */
+  historyRestore(file: string, id: string): Promise<string>;
+  outlines(current: { file: string; text: string } | null): Promise<OutlineEntry[]>;
   writeChapter(file: string, text: string): Promise<{ mtimeMs: number }>;
   prepareReading(file: string, text: string): Promise<{ url: string }>;
   openExternal(url: string): Promise<void>;

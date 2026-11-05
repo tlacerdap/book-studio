@@ -8,6 +8,10 @@ export interface PanelHooks {
   onOpenChapter(file: string): void;
   onOutline(line: number): void;
   onOpenBook(): void;
+  onNewChapter(): void;
+  onMoveChapter(step: -1 | 1): void;
+  onRenameChapter(): void;
+  onDeleteChapter(): void;
 }
 
 export interface OutlineItem {
@@ -44,6 +48,7 @@ export class Panel {
     this.root.append(
       h("button", { class: "panel-book", type: "button", title: "Open another book", onClick: () => this.hooks.onOpenBook() }, h("span", { class: "t" }, book.title), book.author ? h("span", { class: "a" }, book.author) : null),
       ...[this.length(pages, book.chapters.length)].filter((x): x is HTMLElement => !!x),
+      h("button", { class: "new-chapter", type: "button", title: "Add a chapter to the book (Cmd+N)", onClick: () => this.hooks.onNewChapter() }, "+ New chapter"),
     );
     // Consecutive chapters of one Part are grouped under its name; chapters outside every Part stand alone.
     const groups: { key: string; head: string; chapters: ChapterSummary[] }[] = [];
@@ -88,6 +93,19 @@ export class Panel {
             count > 0 ? h("span", { class: "badge", title: `${count} open note${count === 1 ? "" : "s"}` }, String(count)) : null,
           ),
         );
+        if (current) {
+          const index = book.chapters.indexOf(c);
+          body.append(
+            h(
+              "div",
+              { class: "chapter-actions" },
+              h("button", { type: "button", title: "Move this chapter up", "aria-label": "Move chapter up", disabled: index === 0, onClick: () => this.hooks.onMoveChapter(-1) }, "\u2191"),
+              h("button", { type: "button", title: "Move this chapter down", "aria-label": "Move chapter down", disabled: index === book.chapters.length - 1, onClick: () => this.hooks.onMoveChapter(1) }, "\u2193"),
+              h("button", { type: "button", onClick: () => this.hooks.onRenameChapter() }, "Rename"),
+              h("button", { type: "button", class: "danger", onClick: () => this.hooks.onDeleteChapter() }, "Delete"),
+            ),
+          );
+        }
         if (current && outline.length) {
           body.append(
             h(

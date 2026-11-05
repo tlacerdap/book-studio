@@ -6,6 +6,7 @@ import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import { openSearchPanel, search, searchKeymap, SearchQuery, setSearchQuery } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
+import { formatEdit, type FormatCommand } from "../../core/format.ts";
 import { Decoration, drawSelection, EditorView, keymap, MatchDecorator, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 
 // Quiet colours: weight and slant for structure, one grey for marks. Headings are not underlined.
@@ -39,7 +40,7 @@ export class SourceView {
   private view: EditorView;
   private muted = false;
 
-  constructor(parent: HTMLElement, hooks: { onChange(text: string): void }) {
+  constructor(parent: HTMLElement, hooks: { onChange(text: string): void; onCursor?(line: number): void; onFocusChange?(focused: boolean): void }) {
     this.view = new EditorView({
       parent,
       state: EditorState.create({
@@ -55,6 +56,8 @@ export class SourceView {
           keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
           EditorView.updateListener.of((u) => {
             if (u.docChanged && !this.muted) hooks.onChange(u.state.doc.toString());
+            else if (u.selectionSet && !this.muted) hooks.onCursor?.(u.state.doc.lineAt(u.state.selection.main.head).number - 1);
+            if (u.focusChanged) hooks.onFocusChange?.(u.view.hasFocus);
           }),
           EditorView.contentAttributes.of({ "aria-label": "Chapter source", spellcheck: "true" }),
         ],
@@ -85,6 +88,18 @@ export class SourceView {
   }
 
   focus(): void {
+    this.view.focus();
+  }
+
+  get hasFocus(): boolean {
+    return this.view.hasFocus;
+  }
+
+  /** Apply a formatting command (bold, a list, a link...) to the selection. */
+  format(cmd: FormatCommand): void {
+    const sel = this.view.state.selection.main;
+    const e = formatEdit(cmd, this.text, sel.from, sel.to);
+    this.view.dispatch({ changes: { from: e.from, to: e.to, insert: e.insert }, selection: { anchor: e.select.from, head: e.select.to }, scrollIntoView: true, userEvent: "input.format" });
     this.view.focus();
   }
 

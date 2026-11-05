@@ -219,3 +219,68 @@ button { font: inherit; color: inherit; }
 .sr-more:hover { text-decoration: underline; }
 /* Find in this chapter: the count beside the buttons. */
 #findbar .status.count { color: var(--ink-2); min-width: 64px; }
+
+/* ---- Writing: the format bar, the Write view, the status bar --------------------------------- */
+
+#stage { flex: 1; min-height: 0; display: flex; }
+#stage.split #source { flex: 0 0 46%; min-width: 320px; border-right: 1px solid var(--line); }
+#stage.split #reading { flex: 1; min-width: 0; }
+#stage:not(.split) .view { min-width: 0; }
+#stage.split #source .cm-content { max-width: none; padding: 0 20px; }
+#formatbar { flex: none; display: flex; align-items: center; gap: 2px; padding: 4px 14px; border-bottom: 1px solid var(--line); background: var(--bg); overflow-x: auto; }
+#formatbar .fmt { border: 0; background: none; padding: 3px 9px; border-radius: 6px; cursor: pointer; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
+#formatbar .fmt:hover { background: rgba(0, 0, 0, 0.07); color: var(--ink); }
+#formatbar .fmt.b { font-weight: 700; }
+#formatbar .fmt.i { font-style: italic; font-family: var(--font-serif); font-size: 14px; }
+#formatbar .fmt.c { font-family: var(--font-mono); font-size: 12px; }
+#formatbar .sep { width: 1px; height: 16px; background: var(--line); margin: 0 6px; }
+#statusbar { flex: none; display: flex; align-items: center; gap: 14px; height: 26px; padding: 0 14px; border-top: 1px solid var(--line); background: var(--bg); font-size: 12px; color: var(--ink-2); }
+#statusbar .grow, .grow { flex: 1; }
+#statusbar .dim { color: var(--ink-3); }
+#statusbar .warn { color: var(--warn); }
+#statusbar .st-btn { border: 0; background: none; cursor: pointer; color: var(--ink-3); font-size: 12px; padding: 2px 6px; border-radius: 5px; }
+#statusbar .st-btn:hover { background: rgba(0, 0, 0, 0.07); color: var(--ink); }
+
+/* The chapter list: adding and changing chapters. */
+.new-chapter { display: block; width: calc(100% - 16px); margin: 0 8px 8px; text-align: left; border: 1px dashed var(--line); background: none; border-radius: 7px; padding: 5px 9px; cursor: pointer; color: var(--ink-2); font-size: 12.5px; }
+.new-chapter:hover { border-color: #b9b5ad; color: var(--ink); background: rgba(255, 255, 255, 0.6); }
+.chapter-actions { display: flex; gap: 4px; padding: 2px 8px 6px 34px; }
+.chapter-actions button { border: 1px solid var(--line); background: #fff; border-radius: 5px; padding: 0 8px; font-size: 11.5px; cursor: pointer; color: var(--ink-2); }
+.chapter-actions button:hover:not(:disabled) { border-color: #b9b5ad; color: var(--ink); }
+.chapter-actions button:disabled { opacity: 0.35; cursor: default; }
+.chapter-actions .danger:hover { color: var(--warn); border-color: var(--warn); }
+
+/* Modal pieces: asking for a name, going to a chapter, the version history. */
+.scrim { position: fixed; inset: 0; background: rgba(20, 20, 20, 0.32); z-index: 40; display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; }
+.modal { width: 420px; max-width: calc(100vw - 32px); background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px 14px; box-shadow: 0 16px 50px rgba(0, 0, 0, 0.25); }
+.modal h3 { margin: 0 0 10px; font: 400 19px/1.2 var(--font-serif); }
+.modal input[type="text"] { width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: 7px; font: inherit; }
+.modal input[type="text"]:focus { outline: 2px solid rgba(60, 120, 255, 0.45); border-color: transparent; }
+.modal .row { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 14px; }
+.modal .small { font-size: 12px; color: var(--ink-3); margin: 8px 0 0; }
+.modal.palette { width: 560px; padding: 10px; }
+.modal.palette input { font-size: 15px; }
+.pal-list { max-height: 50vh; overflow-y: auto; margin-top: 8px; }
+.pal-row { display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left; border: 0; background: none; padding: 6px 8px; border-radius: 7px; cursor: pointer; font: inherit; }
+.pal-row.on, .pal-row:hover { background: rgba(60, 120, 255, 0.12); }
+.pal-kind { flex: none; width: 58px; font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.pal-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pal-where { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font-size: 12px; }
+.pal-empty { padding: 12px 8px; color: var(--ink-3); }
+.modal.history { width: min(980px, calc(100vw - 48px)); padding-bottom: 12px; }
+.hist-body { display: flex; gap: 12px; height: min(520px, 60vh); }
+.hist-list { flex: 0 0 250px; overflow-y: auto; border-right: 1px solid var(--line); padding-right: 8px; }
+.hist-row { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 8px; border-radius: 7px; cursor: pointer; font: inherit; }
+.hist-row:hover { background: rgba(0, 0, 0, 0.045); }
+.hist-row.on { background: rgba(60, 120, 255, 0.13); }
+.hist-row .when { display: block; font-weight: 600; font-size: 12.5px; }
+.hist-row .when em { font-weight: 400; color: var(--ok); font-style: normal; font-size: 11.5px; }
+.hist-row .what { display: block; color: var(--ink-2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-row .meta { display: block; color: var(--ink-3); font-size: 11px; }
+.hist-diff { flex: 1; overflow: auto; font-family: var(--font-mono); font-size: 12px; line-height: 1.5; }
+.hist-diff .small { font-family: var(--font-ui); }
+.d-line { white-space: pre-wrap; padding: 0 8px; overflow-wrap: anywhere; }
+.d-line.dadd { background: #e2f3e4; }
+.d-line.ddel { background: #f8e1de; text-decoration: line-through; text-decoration-color: rgba(138, 42, 28, 0.4); }
+.d-line.dsame { color: var(--ink-3); }
+.d-skip { color: var(--ink-3); text-align: center; padding: 3px 0; font-family: var(--font-ui); font-size: 11.5px; }

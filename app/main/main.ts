@@ -9,6 +9,9 @@ import { Worker } from "node:worker_threads";
 import { searchFiles, type SearchResult } from "../../core/search.ts";
 import { bookEvidence, chapterFiles, ConfigError, isBook, loadBook, outputPdf, writeDefaultBookYaml, type BookConfig } from "../../core/config.ts";
 import { listChapters } from "../../core/book.ts";
+import { ChapterError, createChapter, linksTo, moveChapter, renameChapter } from "../../core/chapters.ts";
+import { lineDiff, listSnapshots, readSnapshot, snapshot } from "../../core/history.ts";
+import { outline } from "../../core/notemap.ts";
 import { atomicWrite } from "../../core/fsutil.ts";
 import { locateProblems, printBook } from "../../core/print.ts";
 import { buildReadingHtml } from "../../core/reading.ts";
@@ -160,6 +163,18 @@ function watch(b: BookConfig): void {
   }
 }
 
+const historyStore = () => app.getPath("userData");
+
+/** Remember this text as a version of the chapter. Losing a version must never get in the way of saving. */
+function keepVersion(file: string, text: string, force = false): void {
+  if (!book) return;
+  try {
+    snapshot(historyStore(), book.root, file, text, Date.now(), force);
+  } catch {
+    /* the history is a convenience */
+  }
+}
+
 function registerReading(html: string): string {
   const id = `r${++readingCounter}`;
   readingPages.set(id, html);
@@ -281,12 +296,88 @@ function registerIpc(): void {
   });
   handle("chapter:read", (file: string): ChapterText => {
     const f = chapterPath(String(file));
-    return { text: fs.readFileSync(f, "utf8"), mtimeMs: fs.statSync(f).mtimeMs };
+    const text = fs.readFileSync(f, "utf8");
+    // What the chapter looks like when it is opened or when someone else changes it is a version worth keeping.
+    keepVersion(f, text);
+    return { text, mtimeMs: fs.statSync(f).mtimeMs };
   });
   handle("chapter:write", (file: string, text: string) => {
     const f = chapterPath(String(file));
     atomicWrite(f, String(text));
+    keepVersion(f, String(text));
     return { mtimeMs: fs.statSync(f).mtimeMs };
+  });
+  handle("chapter:create", (title: string) => {
+    const b = requireBook();
+    try {
+      return { ok: true as const, file: createChapter(b, String(title).slice(0, 120)) };
+    } catch (e) {
+      if (e instanceof ChapterError) return { ok: false as const, message: e.message };
+      throw e;
+    }
+  });
+  handle("chapter:rename", (file: string, title: string) => {
+    const b = requireBook();
+    try {
+      return { ok: true as const, file: renameChapter(b, chapterPath(String(file)), String(title).slice(0, 120)) };
+    } catch (e) {
+      if (e instanceof ChapterError) return { ok: false as const, message: e.message };
+      throw e;
+    }
+  });
+  handle("chapter:move", (file: string, step: number) => {
+    const b = requireBook();
+    try {
+      return { ok: true as const, file: moveChapter(b, chapterPath(String(file)), step < 0 ? -1 : 1) };
+    } catch (e) {
+      if (e instanceof ChapterError) return { ok: false as const, message: e.message };
+      throw e;
+    }
+  });
+  handle("chapter:delete", async (file: string): Promise<boolean> => {
+    const b = requireBook();
+    const f = chapterPath(String(file));
+    const linked = linksTo(b, f);
+    const r = await dialog.showMessageBox(mainWindow!, {
+      type: "warning",
+      message: `Move ${path.basename(f)} to the Trash?`,
+      detail: linked.length ? `${linked.join(", ")} link${linked.length === 1 ? "s" : ""} to it, and those links will stop working. You can get the file back from the Trash.` : "You can get the file back from the Trash.",
+      buttons: ["Move to Trash", "Cancel"],
+      defaultId: 1,
+      cancelId: 1,
+    });
+    if (r.response !== 0) return false;
+    keepVersion(f, fs.readFileSync(f, "utf8"), true);
+    await shell.trashItem(f);
+    return true;
+  });
+  handle("history:list", (file: string) => {
+    const b = requireBook();
+    return listSnapshots(historyStore(), b.root, chapterPath(String(file)));
+  });
+  handle("history:diff", (file: string, id: string, current: string) => {
+    const b = requireBook();
+    const old = readSnapshot(historyStore(), b.root, chapterPath(String(file)), String(id));
+    return lineDiff(old, String(current));
+  });
+  handle("history:restore", (file: string, id: string) => {
+    const b = requireBook();
+    const f = chapterPath(String(file));
+    const text = readSnapshot(historyStore(), b.root, f, String(id));
+    keepVersion(f, fs.readFileSync(f, "utf8"), true); // the version being replaced stays in the history
+    return text;
+  });
+  handle("book:outlines", (current: { file: string; text: string } | null) => {
+    const b = requireBook();
+    return chapterFiles(b).map((f) => {
+      let text = "";
+      try {
+        text = current && current.file === f ? String(current.text) : fs.readFileSync(f, "utf8");
+      } catch {
+        /* a chapter that cannot be read has no headings to offer */
+      }
+      return { file: f, headings: outline(text) };
+    });
   });
   handle("reading:prepare", (file: string, text: string) => {
     const b = requireBook();
@@ -364,10 +455,13 @@ function buildMenu(): void {
     {
       label: "File",
       submenu: [
+        { label: "New Chapter...", accelerator: "CmdOrCtrl+N", click: () => send("new-chapter") },
+        { type: "separator" },
         { label: "Open Book Folder...", accelerator: "CmdOrCtrl+O", click: () => send("open-book") },
         { label: "Open Recent", submenu: openRecent },
         { type: "separator" },
         { label: "Save", accelerator: "CmdOrCtrl+S", click: () => send("save") },
+        { label: "Version History...", accelerator: "CmdOrCtrl+Shift+H", click: () => send("history") },
         { label: "Print PDF", accelerator: "CmdOrCtrl+P", click: () => send("print") },
         { type: "separator" },
         mac ? { role: "close" } : { role: "quit" },
@@ -376,6 +470,9 @@ function buildMenu(): void {
     {
       label: "Edit",
       submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
         { role: "cut" },
         { role: "copy" },
         { role: "paste" },
@@ -384,12 +481,34 @@ function buildMenu(): void {
         { label: "Add Note", accelerator: "CmdOrCtrl+Shift+M", click: () => send("add-note") },
         { label: "Find in Chapter", accelerator: "CmdOrCtrl+F", click: () => send("find") },
         { label: "Find in Book", accelerator: "CmdOrCtrl+Shift+F", click: () => send("find-book") },
+        { label: "Go to Chapter or Heading...", accelerator: "CmdOrCtrl+K", click: () => send("goto") },
+      ],
+    },
+    {
+      label: "Format",
+      submenu: [
+        { label: "Bold", accelerator: "CmdOrCtrl+B", click: () => send("format:bold") },
+        { label: "Italic", accelerator: "CmdOrCtrl+I", click: () => send("format:italic") },
+        { label: "Code", accelerator: "CmdOrCtrl+Alt+C", click: () => send("format:code") },
+        { type: "separator" },
+        { label: "Section Heading", accelerator: "CmdOrCtrl+2", click: () => send("format:h2") },
+        { label: "Subheading", accelerator: "CmdOrCtrl+3", click: () => send("format:h3") },
+        { type: "separator" },
+        { label: "Bulleted List", accelerator: "CmdOrCtrl+Shift+8", click: () => send("format:bullets") },
+        { label: "Numbered List", accelerator: "CmdOrCtrl+Shift+7", click: () => send("format:numbers") },
+        { label: "Quote", accelerator: "CmdOrCtrl+Shift+.", click: () => send("format:quote") },
+        { label: "Link", accelerator: "CmdOrCtrl+L", click: () => send("format:link") },
+        { label: "Insert Table", click: () => send("format:table") },
       ],
     },
     {
       label: "View",
       submenu: [
-        { label: "Switch Reading / Source", accelerator: "CmdOrCtrl+/", click: () => send("toggle-view") },
+        { label: "Reading", accelerator: "CmdOrCtrl+Alt+1", click: () => send("view-reading") },
+        { label: "Write and Preview", accelerator: "CmdOrCtrl+Alt+2", click: () => send("view-split") },
+        { label: "Source", accelerator: "CmdOrCtrl+Alt+3", click: () => send("view-source") },
+        { label: "Switch View", accelerator: "CmdOrCtrl+/", click: () => send("toggle-view") },
+        { type: "separator" },
         { label: "Show or Hide Chapters", accelerator: "CmdOrCtrl+\\", click: () => send("toggle-panel") },
         { label: "Previous Chapter", accelerator: "CmdOrCtrl+[", click: () => send("prev-chapter") },
         { label: "Next Chapter", accelerator: "CmdOrCtrl+]", click: () => send("next-chapter") },
@@ -424,7 +543,7 @@ function createWindow(): void {
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true,
-      spellcheck: false,
+      spellcheck: true,
     },
   });
   mainWindow = win;

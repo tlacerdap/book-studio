@@ -5,7 +5,7 @@
 // a note does not re-render anything.
 
 import { deleteNote, editNote, insertNote, stripNotes, type Note, type NoteKind, type NoteThread } from "../../core/notes.ts";
-import { blockStartingAt, insertAfterLine, parseSrc, placeNotes, splitQuote, withQuote, type BlockRange, type NoteGroup } from "../../core/notemap.ts";
+import { blockForLine, blockStartingAt, insertAfterLine, parseSrc, placeNotes, splitQuote, withQuote, type BlockRange, type NoteGroup } from "../../core/notemap.ts";
 import { clear, h } from "./dom.ts";
 
 export interface ReadingHooks {
@@ -738,6 +738,22 @@ export class ReadingView {
     const range = blockStartingAt(this.text, this.blocks, origLine);
     const b = range && this.blocks.find((x) => x.src === range.src);
     if (b) this.scroller.scrollTop = Math.max(0, b.top * this.zoom - 40);
+  }
+
+  /** Bring the block that holds a line of the file (0-based) into view, if it is not already; used to keep the pages beside the editor. */
+  revealLine(origLine: number): void {
+    if (!this.ready) return;
+    const { lineMap } = stripNotes(this.text);
+    let k = -1;
+    for (let i = 0; i < lineMap.length && lineMap[i] <= origLine; i++) k = i;
+    if (k < 0) return;
+    const range = blockForLine(this.blocks, k);
+    const b = range && this.blocks.find((x) => x.src === range.src);
+    if (!b) return;
+    const top = b.top * this.zoom;
+    const bottom = b.bottom * this.zoom;
+    const view0 = this.scroller.scrollTop;
+    if (top < view0 + 30 || bottom > view0 + this.scroller.clientHeight - 30) this.scroller.scrollTop = Math.max(0, top - this.scroller.clientHeight * 0.3);
   }
 
   /** The first line of the file for the active block, so the source view can open where the reader was. */
