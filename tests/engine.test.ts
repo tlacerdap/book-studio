@@ -140,3 +140,20 @@ describe("print report: which chapter a problem belongs to", () => {
     expect(locateProblems(report, chapters).every((p) => p.check === "a check")).toBe(true);
   });
 });
+
+import { tableWordsMissing } from "../core/check.ts";
+
+describe("table cell words in the printed text", () => {
+  // A narrow table: the lines of its cells come out interleaved, with words broken at line ends.
+  const printed = "everyNameexplaDescriptionthingfixedcostlyWhenIsdoneEmbeddingmodel".replace(/[^A-Za-z0-9]/g, "");
+  it("accepts words broken across lines or by ligatures", () => {
+    expect(tableWordsMissing("everything is fixed", printed)).toEqual([]);
+    expect(tableWordsMissing("explanation", printed)).toEqual([]); // 'expla' and the end are both there
+  });
+  it("finds a word that was lost", () => {
+    expect(tableWordsMissing("embedding quarantine", printed)).toEqual(["quarantine"]);
+  });
+  it("skips short words and punctuation", () => {
+    expect(tableWordsMissing("a to of, it", printed)).toEqual([]);
+  });
+});

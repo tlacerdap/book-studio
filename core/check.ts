@@ -308,6 +308,21 @@ function checkListSplits(pages: PageInfo[]): string[] {
 const alnum = (s: string): string => s.replace(/[^A-Za-z0-9\u00C0-\u024F]+/g, "");
 
 /**
+ * The words of a table cell that cannot be found in the printed text. A cell is not one run there: narrow columns break
+ * words at the end of a line (with a hyphen, or a ligature glyph apart) and the neighbouring columns' lines come in
+ * between. So a word counts as present when it is found whole, or when its first four letters or its last four are
+ * (a word broken early still has its end intact, and one broken late its beginning). Words under five letters are skipped.
+ */
+export function tableWordsMissing(cell: string, printed: string): string[] {
+  const out: string[] = [];
+  for (const w of cell.match(/[A-Za-z0-9\u00C0-\u024F]+/g) ?? []) {
+    if (w.length < 5) continue;
+    if (!printed.includes(w) && !printed.includes(w.slice(0, 4)) && !printed.includes(w.slice(-4))) out.push(w);
+  }
+  return out;
+}
+
+/**
  * Every paragraph, heading, list item and code line of the source must be in the printed text. This is the check on the
  * PDF itself: the page can look fine on screen and still lose a line when it is printed.
  */
@@ -324,11 +339,17 @@ function checkTextIntegrity(pages: PageInfo[], sources: { name: string; text: st
     let inTable = false;
     for (const tok of md.parse(stripNotes(src.text).text, {})) {
       // A table prints its columns side by side, so the lines of one cell are interleaved with its neighbours' and its
-      // text is never one run in the printed text. Table cells are therefore not compared here.
+      // text is never one run in the printed text. Cells are checked word by word instead (see tableWordsMissing).
       if (tok.type === "table_open") inTable = true;
       else if (tok.type === "table_close") inTable = false;
       const pieces: string[] = [];
-      if (inTable) continue;
+      if (inTable) {
+        if (tok.type === "inline" && tok.children) {
+          const cell = tok.children.filter((t) => t.type === "text" || t.type === "code_inline").map((t) => t.content).join(" ");
+          for (const w of tableWordsMissing(cell, printed)) missing.push(`${src.name}: table cell word '${w}'`);
+        }
+        continue;
+      }
       if (tok.type === "inline" && tok.children) {
         // An external link prints its address after its text, so the run of source text is broken there.
         let cur = "";
