@@ -114,7 +114,7 @@ export type MenuCommand =
   | "history"
   | "goto"
   | "view-reading"
-  | "view-split"
+  | "edit-block"
   | "view-source"
   | `format:${FormatCommand}`
   | "toggle-view"

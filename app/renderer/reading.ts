@@ -4,7 +4,8 @@
 // block is; we draw the cards next to them. Notes are edited by changing the markdown text, never the page, so adding
 // a note does not re-render anything.
 
-import { deleteNote, editNote, insertNote, stripNotes, type Note, type NoteKind, type NoteThread } from "../../core/notes.ts";
+import { deleteNote, editNote, insertNote, joinLines, splitLines, stripNotes, type Line, type Note, type NoteKind, type NoteThread } from "../../core/notes.ts";
+import { formatEdit, type FormatCommand } from "../../core/format.ts";
 import { blockForLine, blockStartingAt, insertAfterLine, parseSrc, placeNotes, splitQuote, withQuote, type BlockRange, type NoteGroup } from "../../core/notemap.ts";
 import { clear, h } from "./dom.ts";
 
@@ -21,6 +22,8 @@ export interface ReadingHooks {
   onPages(pages: number): void;
   /** Put text on the clipboard. */
   onCopy(text: string): void;
+  /** A paragraph is being edited in place (true) or the editing ended (false). */
+  onEditing(open: boolean): void;
   /** How many times the searched words occur on the page, and which one is the current one (-1 if none). */
   onFound(count: number, index: number): void;
 }
@@ -107,6 +110,9 @@ export class ReadingView {
   /** How far down the lowest note card reaches, so the page can be made long enough for it. */
   private notesBottom = 0;
   private resizer: ResizeObserver;
+  private pencil: HTMLElement;
+  private wrapLeft = 12;
+  private blockEditor: { el: HTMLElement; ta: HTMLTextAreaElement; chunk: string; from: number; to: number } | null = null;
 
   constructor(
     private root: HTMLElement,
@@ -119,6 +125,8 @@ export class ReadingView {
     this.notesCol = h("div", { class: "notes-col" });
     this.wrap = h("div", { class: "frame-wrap" }, this.frame);
     this.stage = h("div", { class: "stage" }, this.wrap, this.notesCol);
+    this.pencil = h("button", { class: "edit-pencil", type: "button", title: "Edit this paragraph in place (Cmd+E)", "aria-label": "Edit this paragraph", hidden: true, onClick: () => this.editBlock() }, "\u270e");
+    this.stage.append(this.pencil);
     this.root.append(this.loading, this.stage);
     try {
       const saved = parseFloat(localStorage.getItem("reading-zoom") ?? "");
@@ -153,6 +161,7 @@ export class ReadingView {
     this.editing = null;
     this.focusIds = [];
     this.active = null;
+    this.closeEditor();
     const token = ++this.renderToken;
     this.loading.hidden = false;
     this.pendingScroll = keepScroll;
@@ -259,6 +268,7 @@ export class ReadingView {
       }
       stageW = room;
     }
+    this.wrapLeft = left;
     this.wrap.style.cssText = `left:${left}px;width:${w}px;height:${h}px`;
     this.frame.style.transform = `scale(${z})`;
     // An empty margin takes no room at all, so it cannot make the view scroll sideways.
@@ -348,6 +358,126 @@ export class ReadingView {
     this.active = src;
     this.hooks.onActive(src);
     this.sendMarks();
+    this.placePencil();
+  }
+
+  // ---- editing a paragraph in place -----------------------------------------------------------
+
+  get isEditing(): boolean {
+    return this.blockEditor !== null;
+  }
+
+  /** The pencil beside the paragraph that was clicked: press it (or Cmd+E) to edit that paragraph where it stands. */
+  private placePencil(): void {
+    const b = this.ready && !this.blockEditor && this.active ? this.blocks.find((x) => x.src === this.active) : null;
+    if (!b) {
+      this.pencil.hidden = true;
+      return;
+    }
+    this.pencil.hidden = false;
+    this.pencil.style.left = `${this.wrapLeft + 10 * this.zoom}px`;
+    this.pencil.style.top = `${b.top * this.zoom + 2}px`;
+  }
+
+  /**
+   * Edit the clicked paragraph as markdown, right on the page: a box opens over it holding exactly the lines of the file
+   * that make it up (a note written inside it stays in the text). Cmd+Enter keeps the change, Esc drops it.
+   */
+  editBlock(): void {
+    if (this.blockEditor) return this.blockEditor.ta.focus();
+    const src = this.active;
+    if (!this.ready || !src) return this.hooks.onToast("Click a paragraph first, then edit it.");
+    const block = this.blocks.find((x) => x.src === src);
+    if (!block) return;
+    const { first, last } = parseSrc(src);
+    const { lineMap } = stripNotes(this.text);
+    const from = lineMap[first];
+    const to = lineMap[last];
+    if (from === undefined || to === undefined) return;
+    const lines = splitLines(this.text);
+    const chunk = lines
+      .slice(from, to + 1)
+      .map((l) => l.body)
+      .join("\n");
+    const z = this.zoom;
+    const ta = h("textarea", { class: "ie-text", spellcheck: "true", "aria-label": "This paragraph as markdown", rows: 2 }) as HTMLTextAreaElement;
+    ta.value = chunk;
+    const fit = () => {
+      ta.style.height = "auto";
+      ta.style.height = `${ta.scrollHeight + 2}px`;
+    };
+    const el = h(
+      "div",
+      { class: "inline-edit", style: `left:${this.wrapLeft}px;top:${Math.max(0, block.top * z - 8)}px;width:${FRAME_WIDTH * z}px` },
+      h("div", { class: "ie-label" }, "Editing this paragraph (markdown)"),
+      ta,
+      h(
+        "div",
+        { class: "ie-row" },
+        h("span", { class: "ie-hint" }, "Cmd+Enter keeps the change. Esc drops it."),
+        h("button", { class: "tb-btn", type: "button", onClick: () => this.closeEditor() }, "Cancel"),
+        h("button", { class: "tb-btn primary", type: "button", onClick: () => this.commitEditor() }, "Keep change"),
+      ),
+    );
+    ta.addEventListener("input", fit);
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        this.closeEditor();
+      } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        this.commitEditor();
+      }
+    });
+    this.blockEditor = { el, ta, chunk, from, to };
+    this.pencil.hidden = true;
+    this.stage.append(el);
+    this.hooks.onEditing(true);
+    fit();
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+    // Make sure the box is on screen.
+    const top = el.offsetTop;
+    if (top < this.scroller.scrollTop || top + el.offsetHeight > this.scroller.scrollTop + this.scroller.clientHeight) this.scroller.scrollTop = Math.max(0, top - 80);
+  }
+
+  private commitEditor(): void {
+    const ed = this.blockEditor;
+    if (!ed) return;
+    const body = ed.ta.value.replace(/\r\n/g, "\n").replace(/\n+$/, "");
+    if (body === ed.chunk) return this.closeEditor();
+    const lines = splitLines(this.text);
+    const eol = lines[ed.from].eol || "\n";
+    const added: Line[] = body.split("\n").map((s) => ({ body: s, eol }));
+    added[added.length - 1].eol = lines[ed.to].eol;
+    const next = joinLines([...lines.slice(0, ed.from), ...added, ...lines.slice(ed.to + 1)]);
+    this.closeEditor();
+    this.hooks.onTextChange(next);
+  }
+
+  closeEditor(): void {
+    const ed = this.blockEditor;
+    if (!ed) return;
+    this.blockEditor = null;
+    ed.el.remove();
+    this.hooks.onEditing(false);
+    this.placePencil();
+  }
+
+  /** A formatting command (bold, a list...) applied to the paragraph being edited. False if none is open. */
+  formatInline(cmd: FormatCommand): boolean {
+    const ed = this.blockEditor;
+    if (!ed) return false;
+    const ta = ed.ta;
+    const e = formatEdit(cmd, ta.value, ta.selectionStart, ta.selectionEnd);
+    ta.focus();
+    ta.setSelectionRange(e.from, e.to);
+    // Typed in as text, so the box's own undo still works.
+    if (e.insert === "") document.execCommand("delete");
+    else document.execCommand("insertText", false, e.insert);
+    ta.setSelectionRange(e.select.from, e.select.to);
+    return true;
   }
 
   /**
@@ -463,6 +593,7 @@ export class ReadingView {
     items.sort((a, b) => a.y - b.y || a.order - b.order);
     for (const it of items) this.notesCol.append(it.el);
     this.layout(); // the page makes room for the margin only while there is something in it
+    this.placePencil();
     // Cards sit next to their block. The box being written in stays where the words are; the other cards make room
     // for it, those above it moving up and those below it moving down.
     const gap = 8;

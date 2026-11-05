@@ -705,6 +705,7 @@ function buildMenu(): void {
         { role: "paste" },
         { role: "selectAll" },
         { type: "separator" },
+        { label: "Edit This Paragraph", accelerator: "CmdOrCtrl+E", click: () => send("edit-block") },
         { label: "Add Note", accelerator: "CmdOrCtrl+Shift+M", click: () => send("add-note") },
         { label: "Find in Chapter", accelerator: "CmdOrCtrl+F", click: () => send("find") },
         { label: "Find in Book", accelerator: "CmdOrCtrl+Shift+F", click: () => send("find-book") },
@@ -736,8 +737,7 @@ function buildMenu(): void {
       label: "View",
       submenu: [
         { label: "Reading", accelerator: "CmdOrCtrl+Alt+1", click: () => send("view-reading") },
-        { label: "Write and Preview", accelerator: "CmdOrCtrl+Alt+2", click: () => send("view-split") },
-        { label: "Source", accelerator: "CmdOrCtrl+Alt+3", click: () => send("view-source") },
+        { label: "Source", accelerator: "CmdOrCtrl+Alt+2", click: () => send("view-source") },
         { label: "Switch View", accelerator: "CmdOrCtrl+/", click: () => send("toggle-view") },
         { type: "separator" },
         { label: "Show or Hide Chapters", accelerator: "CmdOrCtrl+\\", click: () => send("toggle-panel") },

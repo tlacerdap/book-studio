@@ -32,7 +32,7 @@ interface Doc {
 
 let book: BookInfo | null = null;
 let doc: Doc | null = null;
-type ViewMode = "reading" | "split" | "source";
+type ViewMode = "reading" | "source";
 const stored = (key: string): string | null => {
   try {
     return localStorage.getItem(key);
@@ -47,13 +47,12 @@ const remember = (key: string, value: string): void => {
     /* not remembered */
   }
 };
-let view: ViewMode = stored("view-mode") === "split" || stored("view-mode") === "source" ? (stored("view-mode") as ViewMode) : "reading";
-/** The way of writing the reader last used, so one key goes back and forth between reading and writing. */
-let writingMode: "split" | "source" = view === "source" ? "source" : "split";
+let view: ViewMode = stored("view-mode") === "source" ? "source" : "reading";
+/** The view that shows the markdown. */
+const writingMode = "source" as const;
 let autosaveOn = stored("autosave") !== "0";
 let saving = false;
 let saveTimer: number | undefined;
-let previewTimer: number | undefined;
 let hints: WritingHint[] = [];
 let checkTimer: number | undefined;
 /** True while a chapter is being renamed, moved or deleted, so the file changes that causes are not taken for outside edits. */
@@ -96,6 +95,7 @@ const reading = new ReadingView(viewEls.reading, api, {
   },
   onCopy: (text) => void api.copyText(text).then(() => toast(`Copied. Paste it to Claude Code: ${text}`)),
   onFound: (count, index) => showFound(count, index),
+  onEditing: () => showView(view),
 });
 
 const searchPanel = new SearchPanel(
@@ -211,7 +211,6 @@ async function study(): Promise<void> {
   });
 }
 
-let syncTimer: number | undefined;
 const source = new SourceView(viewEls.source, {
   onChange: (text) => {
     if (!doc) return;
@@ -220,15 +219,9 @@ const source = new SourceView(viewEls.source, {
     renderStatus();
     scheduleOutline();
     scheduleAutosave();
-    schedulePreview();
     scheduleCheck();
   },
   onImages: (files) => void addPictures(files),
-  onCursor: (line) => {
-    if (view !== "split") return;
-    window.clearTimeout(syncTimer);
-    syncTimer = window.setTimeout(() => reading.revealLine(line), 150);
-  },
 });
 
 const report = new ReportPanel(
@@ -264,11 +257,11 @@ const isMac = api.platform === "darwin";
 const mod = isMac ? "Cmd" : "Ctrl";
 
 function showView(which: ViewMode | "welcome"): void {
-  viewEls.reading.hidden = !(which === "reading" || which === "split");
-  viewEls.source.hidden = !(which === "source" || which === "split");
+  viewEls.reading.hidden = which !== "reading";
+  viewEls.source.hidden = which !== "source";
   viewEls.welcome.hidden = which !== "welcome";
-  $("stage").classList.toggle("split", which === "split");
-  $("formatbar").hidden = !(which === "source" || which === "split");
+  // The format bar is for the markdown: always in the source view, in the reading view only while a block is being edited.
+  $("formatbar").hidden = !(which === "source" || (which === "reading" && reading.isEditing));
   $("statusbar").hidden = which === "welcome";
 }
 
@@ -307,14 +300,13 @@ function renderToolbar(): void {
   if (doc) {
     const seg = h("div", { class: "seg", role: "group", "aria-label": "View" });
     seg.append(
-      h("button", { type: "button", "aria-pressed": String(view === "reading"), title: `Reading view, with your notes (${mod}+Alt+1)`, onClick: () => void setView("reading") }, "Reading"),
-      h("button", { type: "button", "aria-pressed": String(view === "split"), title: `Write on the left, see the pages on the right (${mod}+Alt+2)`, onClick: () => void setView("split") }, "Write"),
-      h("button", { type: "button", "aria-pressed": String(view === "source"), title: `Only the markdown (${mod}+Alt+3)`, onClick: () => void setView("source") }, "Source"),
+      h("button", { type: "button", "aria-pressed": String(view === "reading"), title: `The pages as they print: click a paragraph to edit it or add a note (${mod}+Alt+1)`, onClick: () => void setView("reading") }, "Reading"),
+      h("button", { type: "button", "aria-pressed": String(view === "source"), title: `The whole chapter as markdown (${mod}+Alt+2)`, onClick: () => void setView("source") }, "Source"),
     );
     const pct = Math.round(reading.zoomLevel * 100);
     bar.append(
       seg,
-      ...(view !== "source"
+      ...(view === "reading"
         ? [h(
             "div",
             { class: "seg zoom", role: "group", "aria-label": "Zoom" },
@@ -499,12 +491,10 @@ async function showCurrent(): Promise<void> {
   if (!doc) return;
   showView(view);
   renderStatus();
-  if (view !== "source") {
+  if (view === "reading") {
     viewEls.reading.scrollTop = 0;
-    if (view === "split") source.setText(doc.text);
     await reading.show(doc.file, doc.text);
     if (!findbar.hidden && findInput?.value.trim()) reading.findSet(findInput.value);
-    if (view === "split") source.focus();
   } else {
     source.setText(doc.text);
     source.focus();
@@ -566,15 +556,6 @@ function scheduleAutosave(): void {
   saveTimer = window.setTimeout(() => void save({ auto: true }), 1200);
 }
 
-/** In the Write view the pages on the right follow what is typed, a moment after typing stops. */
-function schedulePreview(): void {
-  if (view !== "split") return;
-  window.clearTimeout(previewTimer);
-  previewTimer = window.setTimeout(() => {
-    if (doc && view === "split") void reading.show(doc.file, doc.text);
-  }, 800);
-}
-
 /** A note was added, edited or removed in the reading view: keep the whole file in step, on disk too. */
 async function changeText(text: string): Promise<void> {
   if (!doc) return;
@@ -582,6 +563,10 @@ async function changeText(text: string): Promise<void> {
   source.setText(text);
   await save();
   renderPanel();
+  renderStatus();
+  scheduleCheck();
+  // A paragraph edited in place changes the page; a note does not (the page is only laid out again if its text changed).
+  if (view === "reading") await reading.show(doc.file, doc.text);
 }
 
 async function refreshBook(): Promise<void> {
@@ -601,8 +586,6 @@ async function setView(next: ViewMode): Promise<void> {
   const line = next !== "reading" && view === "reading" ? reading.activeFirstLine() : null;
   view = next;
   remember("view-mode", next);
-  if (next !== "reading") writingMode = next;
-  window.clearTimeout(previewTimer);
   renderToolbar();
   await showCurrent();
   if (next !== "reading" && line !== null) source.goToLine(line);
@@ -659,7 +642,7 @@ async function onBookChanged(files: string[]): Promise<void> {
     return;
   }
   if (disk === doc.saved) return; // our own write, or a change that did not touch this chapter
-  if (!dirty()) {
+  if (!dirty() && !reading.isEditing) {
     doc.text = disk;
     doc.saved = disk;
     source.setText(disk);
@@ -715,7 +698,7 @@ function showFound(count: number, index: number): void {
  */
 function openFind(initial?: string, opts: { focus?: boolean } = {}): void {
   if (!doc) return;
-  if (view === "source" || (view === "split" && source.hasFocus)) {
+  if (view === "source") {
     if (initial) source.setSearch(initial);
     return source.openFind();
   }
@@ -773,7 +756,6 @@ async function openHit(file: string, hit: SearchHit | null, query: string): Prom
     else source.goToLine(0);
     return;
   }
-  if (view === "split" && hit && hit.ordinal >= 0) source.goToLine(hit.line - 1);
   openFind(query, { focus: false });
   if (hit && hit.ordinal < 0) {
     // the chapter's title: it sits above the page text, so just show the top of the chapter
@@ -853,7 +835,7 @@ async function addPictures(files: File[]): Promise<void> {
 /** Format > Insert Picture: choose files from disk. */
 async function insertPicture(): Promise<void> {
   if (!doc) return;
-  if (view === "reading") await setView("split");
+  if (view === "reading") await setView("source");
   const res = await api.pickImages(doc.file);
   if (!res.ok) {
     if (res.message) toast(res.message);
@@ -864,7 +846,8 @@ async function insertPicture(): Promise<void> {
 
 function applyFormat(cmd: FormatCommand): void {
   if (!doc) return;
-  if (view === "reading") return toast("Switch to Write or Source to format text.");
+  if (view === "reading" && reading.formatInline(cmd)) return;
+  if (view === "reading") return toast("Click a paragraph and press its pencil (Cmd+E) to format it, or use the Source view.");
   const el = document.activeElement as HTMLElement | null;
   // A format key pressed in the find box or a note box is not meant for the chapter.
   if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA") && !el.closest("#source")) return;
@@ -937,7 +920,7 @@ async function newChapter(): Promise<void> {
   const title = await askText("New chapter", { confirm: "Create", hint: "Its file name is built from the title. You can rename it later." });
   if (!title) return;
   await restructure(() => api.createChapter(title));
-  if (doc && view === "reading") await setView("split");
+  if (doc && view === "reading") await setView("source");
 }
 
 async function renameChapter(): Promise<void> {
@@ -1175,9 +1158,6 @@ api.onMenu((cmd: MenuCommand) => {
     case "view-reading":
       void setView("reading");
       break;
-    case "view-split":
-      void setView("split");
-      break;
     case "view-source":
       void setView("source");
       break;
@@ -1212,6 +1192,10 @@ api.onMenu((cmd: MenuCommand) => {
       break;
     case "add-note":
       addNote();
+      break;
+    case "edit-block":
+      if (view === "reading") reading.editBlock();
+      else toast("You are in the Source view: the whole chapter is already editable.");
       break;
     case "toggle-panel":
       togglePanel();
