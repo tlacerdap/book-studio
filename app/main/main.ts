@@ -9,6 +9,8 @@ import { Worker } from "node:worker_threads";
 import { searchFiles, type SearchResult } from "../../core/search.ts";
 import { bookEvidence, chapterFiles, ConfigError, isBook, loadBook, outputPdf, addTerm, setKnown, setPageBudget, writeDefaultBookYaml, type BookConfig } from "../../core/config.ts";
 import { checkText } from "../../core/writing-rules.ts";
+import { inboxNotes } from "../../core/inbox.ts";
+import { allCards } from "../../core/study.ts";
 import { listChapters } from "../../core/book.ts";
 import { ChapterError, createChapter, linksTo, moveChapter, renameChapter } from "../../core/chapters.ts";
 import { lineDiff, listSnapshots, readSnapshot, snapshot } from "../../core/history.ts";
@@ -168,6 +170,16 @@ function watch(b: BookConfig): void {
 }
 
 const historyStore = () => app.getPath("userData");
+
+/** A chapter's text: as the editor holds it if that is the open chapter, else from disk. */
+function textOf(file: string, current: { file: string; text: string } | null): string {
+  if (current && typeof current.text === "string" && current.file === file) return current.text;
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch {
+    return "";
+  }
+}
 
 /**
  * The writing hints of one chapter. The acronym check needs the chapters before it (an acronym explained there is
@@ -404,6 +416,19 @@ function registerIpc(): void {
     book = loadBook(b.root);
     return bookInfo(book);
   });
+  handle("notes:all", (current: { file: string; text: string } | null) => {
+    const b = requireBook();
+    return chapterFiles(b)
+      .map((f) => ({ file: f, notes: inboxNotes(textOf(f, current)) }))
+      .filter((c) => c.notes.length);
+  });
+  handle("study:cards", (current: { file: string; text: string } | null) => {
+    const b = requireBook();
+    return chapterFiles(b)
+      .filter((f) => !b.known.includes(path.basename(f)))
+      .map((f) => ({ file: f, cards: allCards(textOf(f, current)) }))
+      .filter((c) => c.cards.length);
+  });
   handle("book:add-term", (term: string) => {
     const b = requireBook();
     ownYamlUntil = Date.now() + 2500;
@@ -537,6 +562,8 @@ function buildMenu(): void {
         { label: "Find in Chapter", accelerator: "CmdOrCtrl+F", click: () => send("find") },
         { label: "Find in Book", accelerator: "CmdOrCtrl+Shift+F", click: () => send("find-book") },
         { label: "Go to Chapter or Heading...", accelerator: "CmdOrCtrl+K", click: () => send("goto") },
+        { type: "separator" },
+        { label: "Study Flashcards...", accelerator: "CmdOrCtrl+Alt+S", click: () => send("study") },
       ],
     },
     {

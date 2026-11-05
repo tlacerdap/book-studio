@@ -97,6 +97,8 @@ export class ReadingView {
   private pendingFind: { query: string; ordinal: number | null; ctx: string | null } | null = null;
   private findQuery = "";
   private pendingScroll: number | null = null;
+  /** A line to bring into view as soon as the page is laid out. */
+  private pendingReveal: number | null = null;
   private renderToken = 0;
   private wrap: HTMLElement;
   private zoom = 1;
@@ -284,6 +286,11 @@ export class ReadingView {
         if (this.pendingScroll !== null) this.scroller.scrollTop = this.pendingScroll;
         this.pendingScroll = null;
         this.drawNotes();
+        if (this.pendingReveal !== null) {
+          const line = this.pendingReveal;
+          this.pendingReveal = null;
+          this.revealLine(line);
+        }
         if (this.pendingFind) {
           const f = this.pendingFind;
           this.pendingFind = null;
@@ -742,7 +749,10 @@ export class ReadingView {
 
   /** Bring the block that holds a line of the file (0-based) into view, if it is not already; used to keep the pages beside the editor. */
   revealLine(origLine: number): void {
-    if (!this.ready) return;
+    if (!this.ready) {
+      this.pendingReveal = origLine;
+      return;
+    }
     const { lineMap } = stripNotes(this.text);
     let k = -1;
     for (let i = 0; i < lineMap.length && lineMap[i] <= origLine; i++) k = i;

@@ -11,7 +11,9 @@ import { clear, h } from "./dom.ts";
 import { Panel } from "./panel.ts";
 import { ReadingView } from "./reading.ts";
 import { ReportPanel } from "./report.ts";
+import { NotesPanel } from "./inbox.ts";
 import { SearchPanel } from "./search.ts";
+import { openStudy } from "./study.ts";
 import { SourceView } from "./source.ts";
 
 const api = window.studio;
@@ -108,10 +110,79 @@ const searchPanel = new SearchPanel(
     search: (query, current) => api.searchBook(query, current),
     onOpen: (file, hit, query) => void openHit(file, hit, query),
     onActive: (on) => {
-      $("panel-body").hidden = on;
+      searchActive = on;
+      showPanelTab();
     },
   },
 );
+
+/** The left panel shows the chapters or the notes, unless a search is showing its results instead. */
+let panelTab: "chapters" | "notes" = stored("panel-tab") === "notes" ? "notes" : "chapters";
+let searchActive = false;
+
+const notesPanel = new NotesPanel($("panel-notes"), {
+  load: () => api.allNotes(doc ? { file: doc.file, text: doc.text } : null),
+  chapterInfo: (file) => {
+    const c = book?.chapters.find((x) => x.path === file);
+    return c ? { num: c.label ? c.label.replace(/^Chapter /, "") : "", title: c.title } : null;
+  },
+  onOpen: (file, note) => void openNote(file, note.anchor),
+});
+
+function showPanelTab(): void {
+  $("panel-body").hidden = searchActive || panelTab !== "chapters";
+  $("panel-notes").hidden = searchActive || panelTab !== "notes";
+  $("panel-tabs").hidden = searchActive;
+  renderTabs();
+}
+
+function setPanelTab(tab: "chapters" | "notes"): void {
+  panelTab = tab;
+  remember("panel-tab", tab);
+  showPanelTab();
+  if (tab === "notes") void notesPanel.refresh();
+}
+
+function renderTabs(): void {
+  const tabs = $("panel-tabs");
+  clear(tabs);
+  const open = notesPanel.openCount;
+  tabs.append(
+    h("button", { type: "button", role: "tab", "aria-selected": String(panelTab === "chapters"), onClick: () => setPanelTab("chapters") }, "Chapters"),
+    h("button", { type: "button", role: "tab", "aria-selected": String(panelTab === "notes"), title: "Every question and change request in the book", onClick: () => setPanelTab("notes") }, "Notes", open ? h("span", { class: "tab-n" }, String(open)) : ""),
+    h("button", { type: "button", class: "tab-study", title: `Flashcards from the interview questions (${mod}+Alt+S)`, onClick: () => void study() }, "Study"),
+  );
+}
+
+/** Show a note in the book: open its chapter in the Reading view at the paragraph it is about. */
+async function openNote(file: string, anchor: number): Promise<void> {
+  await openChapter(file);
+  if (!doc || doc.file !== file) return;
+  if (view !== "reading") await setView("reading");
+  reading.revealLine(Math.max(0, anchor));
+}
+
+async function study(): Promise<void> {
+  if (!book) return;
+  const chapters = await api.studyCards(doc ? { file: doc.file, text: doc.text } : null);
+  openStudy({
+    bookRoot: book.root,
+    chapters,
+    currentFile: doc?.file ?? null,
+    chapterTitle: (file) => {
+      const c = book?.chapters.find((x) => x.path === file);
+      return c ? `${c.label ? c.label.replace(/^Chapter /, "") + " " : ""}${c.title}` : file;
+    },
+    onShow: (file, line) =>
+      void (async () => {
+        await openChapter(file);
+        if (doc && doc.file === file) {
+          if (view === "reading") reading.revealLine(line);
+          else source.goToLine(line);
+        }
+      })(),
+  });
+}
 
 let syncTimer: number | undefined;
 const source = new SourceView(viewEls.source, {
@@ -492,6 +563,8 @@ async function refreshBook(): Promise<void> {
     renderPanel();
     renderToolbar();
     searchPanel.refresh();
+    if (panelTab === "notes") void notesPanel.refresh();
+    else if (!notesPanel.openCount) void notesPanel.refresh().then(renderTabs);
   }
 }
 
@@ -1045,6 +1118,9 @@ api.onMenu((cmd: MenuCommand) => {
     case "history":
       void showHistory();
       break;
+    case "study":
+      void study();
+      break;
     case "goto":
       void gotoPalette();
       break;
@@ -1116,6 +1192,7 @@ api.onQueryClose(async () => {
 
 async function start(): Promise<void> {
   renderFormatbar();
+  showPanelTab();
   renderToolbar();
   pageCounts = await api.pageCounts();
   const current = await api.currentBook();

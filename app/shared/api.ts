@@ -5,6 +5,8 @@ import type { Problem } from "../../core/print.ts";
 import type { CheckReport } from "../../core/check.ts";
 import type { SearchResult } from "../../core/search.ts";
 import type { FormatCommand } from "../../core/format.ts";
+import type { InboxNote } from "../../core/inbox.ts";
+import type { Card } from "../../core/study.ts";
 
 export interface BookInfo {
   root: string;
@@ -83,11 +85,22 @@ export interface OutlineEntry {
   headings: { level: 2 | 3; title: string; line: number }[];
 }
 
+export interface ChapterNotes {
+  file: string;
+  notes: InboxNote[];
+}
+
+export interface ChapterCards {
+  file: string;
+  cards: Card[];
+}
+
 export type FileResult = { ok: true; file: string } | { ok: false; message: string };
 
 export type { FormatCommand };
 
 export type MenuCommand =
+  | "study"
   | "new-chapter"
   | "history"
   | "goto"
@@ -135,6 +148,10 @@ export interface StudioApi {
   setBudget(pages: number | null): Promise<BookInfo | null>;
   /** Mark a chapter as known (left out of the PDF) or not. */
   setKnown(file: string, known: boolean): Promise<BookInfo | null>;
+  /** Every note of every chapter, for the inbox. */
+  allNotes(current: { file: string; text: string } | null): Promise<ChapterNotes[]>;
+  /** Flashcards from every chapter that is not marked as known. */
+  studyCards(current: { file: string; text: string } | null): Promise<ChapterCards[]>;
   /** The reader knows this word: the checks stop asking for an explanation of it. */
   addTerm(term: string): Promise<BookInfo | null>;
   /** Writing hints for a chapter, as the editor holds it. */

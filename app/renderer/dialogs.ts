@@ -4,7 +4,7 @@
 import type { DiffLine, OutlineEntry, SnapshotInfo, StudioApi } from "../shared/api.ts";
 import { clear, h } from "./dom.ts";
 
-function overlay(label: string, onClose: () => void): { box: HTMLElement; close(): void } {
+export function overlay(label: string, onClose: () => void): { box: HTMLElement; close(): void } {
   const back = document.activeElement as HTMLElement | null;
   const box = h("div", { class: "modal", role: "dialog", "aria-label": label });
   const scrim = h("div", { class: "scrim" }, box);
