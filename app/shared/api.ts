@@ -19,6 +19,8 @@ export interface BookInfo {
   pages: number | null;
   /** File names of the chapters marked as known (left out of the PDF). */
   known: string[];
+  /** Total words across every chapter, with the reader's notes stripped out. */
+  words: number;
 }
 
 /** A finding about the writing: where, and what to tell the author. */

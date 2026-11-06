@@ -10,6 +10,7 @@ import { searchFiles, type SearchResult } from "../../core/search.ts";
 import { bookEvidence, chapterFiles, ConfigError, isBook, loadBook, outputPdf, addTerm, setKnown, setPageBudget, writeDefaultBookYaml, type BookConfig } from "../../core/config.ts";
 import { checkText } from "../../core/writing-rules.ts";
 import { inboxNotes } from "../../core/inbox.ts";
+import { stripNotes } from "../../core/notes.ts";
 import { exportEpub, exportHtml } from "../../core/export.ts";
 import { setDiagramProvider } from "../../core/diagrams.ts";
 import { editorCss } from "../../core/editcss.ts";
@@ -333,8 +334,21 @@ function remember(b: BookConfig): void {
 // The open book
 // ------------------------------------------------------------------------------------------------
 
+/** Every chapter's words added up, with the reader's notes stripped out so they do not inflate the count. */
+function totalWords(b: BookConfig): number {
+  let n = 0;
+  for (const f of chapterFiles(b)) {
+    try {
+      n += (stripNotes(fs.readFileSync(f, "utf8")).text.match(/\S+/g) ?? []).length;
+    } catch {
+      /* an unreadable chapter adds nothing */
+    }
+  }
+  return n;
+}
+
 function bookInfo(b: BookConfig): BookInfo {
-  return { root: b.root, title: b.title, author: b.author, output: b.output, chapters: listChapters(b, chapterFiles(b)), pages: b.pages, known: b.known };
+  return { root: b.root, title: b.title, author: b.author, output: b.output, chapters: listChapters(b, chapterFiles(b)), pages: b.pages, known: b.known, words: totalWords(b) };
 }
 
 function watch(b: BookConfig): void {

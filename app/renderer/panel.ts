@@ -50,6 +50,7 @@ export class Panel {
         { class: "length-main", type: "button", title: "Numbered pages, from the first chapter to the end (the PDF also has a cover and the contents). Click to set the page limit.", onClick: () => this.hooks.onBudget() },
         h("b", {}, done ? (limit === null ? `${total} pages` : `${total} of ${limit} pages`) : `${total}+ pages`),
         h("span", {}, done ? ` in ${inBook.length} chapters${note}` : ` so far, counting ${counted} of ${chapters}...`),
+        book.words ? h("span", { class: "words" }, ` · ${book.words.toLocaleString()} words`) : null,
       ),
       limit !== null && done
         ? h(
