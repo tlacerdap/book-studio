@@ -35,6 +35,7 @@ interface Doc {
 let book: BookInfo | null = null;
 let doc: Doc | null = null;
 let titlebar: Titlebar | null = null;
+let appVersion = "";
 type ViewMode = "reading" | "edit" | "source";
 const stored = (key: string): string | null => {
   try {
@@ -1080,6 +1081,7 @@ function renderStatus(): void {
       },
       autosaveOn ? "Autosave on" : "Autosave off",
     ),
+    appVersion ? h("span", { class: "st dim ver", title: "The version of Book Studio you are running" }, `v${appVersion}`) : "",
   );
 }
 
@@ -1497,6 +1499,7 @@ document.addEventListener("selectionchange", () => pushReading());
 
 async function start(): Promise<void> {
   applyAppearance(await api.appearance());
+  appVersion = await api.version();
   titlebar = await setupTitlebar({ run: runCommand, openFolder: (f) => void openFolder(f) });
   renderFormatbar();
   showPanelTab();
