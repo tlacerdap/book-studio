@@ -64,6 +64,13 @@ const api: StudioApi = {
   onQueryClose: (cb) => subscribe<[]>("window:query-close", cb),
   onOpenFolder: (cb) => subscribe<[string]>("open-folder", cb),
   reportReading: (state: ReadingSnapshot) => call("reading:state", state),
+  chromeInfo: () => call("chrome:info"),
+  menuModel: () => call("menu:model"),
+  minimizeWindow: () => call("window:minimize"),
+  toggleMaximizeWindow: () => call("window:toggle-maximize"),
+  isWindowMaximized: () => call("window:is-maximized"),
+  onMaximizeChange: (cb) => subscribe<[boolean]>("window:maximize-changed", cb),
+  toggleDevTools: () => call("devtools:toggle"),
 };
 
 contextBridge.exposeInMainWorld("studio", api);

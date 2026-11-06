@@ -7,6 +7,7 @@ import type { SearchResult } from "../../core/search.ts";
 import type { FormatCommand } from "../../core/format.ts";
 import type { InboxNote } from "../../core/inbox.ts";
 import type { Card } from "../../core/study.ts";
+import type { MenuSection } from "./menu.ts";
 
 export interface BookInfo {
   root: string;
@@ -112,6 +113,17 @@ export interface ReadingSnapshot {
   heading: string | null;
   /** Text the reader has selected on the page right now, if any. */
   selection: string | null;
+}
+
+/** Whether the window draws its own title bar and menu (Windows, Linux) instead of the operating system's (macOS). */
+export interface ChromeInfo {
+  /** True on Windows and Linux: the renderer draws the title bar and the menu, themed with the rest of the app. */
+  custom: boolean;
+  platform: string;
+  /** Height of the title bar in pixels. */
+  height: number;
+  /** On Windows the native min/max/close buttons sit in an overlay this many pixels wide, on the right. */
+  controlsWidth: number;
 }
 
 export type Theme = "light" | "sepia" | "dark" | "black" | "system";
@@ -228,4 +240,15 @@ export interface StudioApi {
   onOpenFolder(cb: (folder: string) => void): () => void;
   /** Tell the main process what the reader is looking at now (for the optional MCP server). A no-op when it is off. */
   reportReading(state: ReadingSnapshot): Promise<void>;
+  /** Whether this window draws its own title bar and menu (Windows/Linux) or uses the system's (macOS). */
+  chromeInfo(): Promise<ChromeInfo>;
+  /** The application menu as data, for the custom in-window menu bar. Rebuilt on every call (recent books, theme state). */
+  menuModel(): Promise<MenuSection[]>;
+  minimizeWindow(): Promise<void>;
+  /** Maximize the window, or restore it if it is already maximized. */
+  toggleMaximizeWindow(): Promise<void>;
+  isWindowMaximized(): Promise<boolean>;
+  onMaximizeChange(cb: (maximized: boolean) => void): () => void;
+  /** Open or close the developer tools (unpackaged builds only). */
+  toggleDevTools(): Promise<void>;
 }

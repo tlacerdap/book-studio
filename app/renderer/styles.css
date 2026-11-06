@@ -558,3 +558,67 @@ button { font: inherit; color: inherit; }
 .tp-row input[type="range"] { flex: 1; accent-color: #d98a2b; }
 .tp-val { min-width: 34px; text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .tp-note { margin: 10px 0 0; font-size: 12px; color: var(--ink-3); }
+
+/* ---------------------------------------------------------------------------------------------- */
+/* The window's own title bar and menu (Windows and Linux), themed with the rest of the app.      */
+/* ---------------------------------------------------------------------------------------------- */
+html.custom-chrome body { display: flex; flex-direction: column; overflow: hidden; }
+html.custom-chrome #app { height: auto; flex: 1 1 auto; min-height: 0; }
+
+#titlebar {
+  flex: none;
+  height: var(--titlebar-h, 40px);
+  display: flex;
+  align-items: stretch;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  padding-right: var(--controls-w, 0);
+  -webkit-app-region: drag;
+  user-select: none;
+  position: relative;
+  z-index: 50;
+}
+.tb-menubar { display: flex; align-items: stretch; -webkit-app-region: no-drag; padding-left: 4px; }
+.tb-top {
+  -webkit-app-region: no-drag;
+  background: none; border: 0; color: var(--ink); font: inherit; font-size: 13px;
+  padding: 0 11px; cursor: default; display: inline-flex; align-items: center;
+}
+.tb-top:hover, .tb-top[aria-expanded="true"] { background: var(--hover); }
+.tb-title {
+  flex: 1; min-width: 0; text-align: center; color: var(--ink); opacity: 0.5;
+  font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  padding: 0 10px; align-self: center;
+}
+
+.tb-menu {
+  position: fixed; min-width: 234px; max-width: 360px;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line-strong); border-radius: 9px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.24); padding: 5px;
+  z-index: 1000; -webkit-app-region: no-drag;
+}
+.tb-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  background: none; border: 0; color: inherit; font: inherit; font-size: 13px;
+  text-align: left; padding: 6px 10px; border-radius: 6px; cursor: default;
+}
+.tb-item:hover:not([disabled]), .tb-item[aria-expanded="true"] { background: var(--hover); }
+.tb-item[disabled] { opacity: 0.4; }
+.tb-check { width: 14px; flex: none; color: var(--accent); font-size: 12px; text-align: center; }
+.tb-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-accel { color: var(--ink); opacity: 0.45; font-size: 12px; padding-left: 20px; white-space: nowrap; }
+.tb-arrow { opacity: 0.6; padding-left: 10px; font-size: 15px; }
+.tb-sep { height: 1px; background: var(--line); margin: 5px 8px; }
+.tb-subwrap { position: relative; }
+.tb-flyout { position: absolute; left: 100%; top: -6px; margin-left: 3px; }
+.tb-flyout.left { left: auto; right: 100%; margin-left: 0; margin-right: 3px; }
+
+.tb-winctl { display: flex; margin-left: auto; -webkit-app-region: no-drag; }
+.wc {
+  width: 46px; border: 0; background: none; color: var(--ink);
+  display: inline-flex; align-items: center; justify-content: center; cursor: default;
+}
+.wc:hover { background: var(--hover); }
+.wc-close:hover { background: #e81123; color: #fff; }
+.wc-ico { display: inline-flex; }

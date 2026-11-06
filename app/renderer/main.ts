@@ -16,6 +16,7 @@ import { NotesPanel } from "./inbox.ts";
 import { SearchPanel } from "./search.ts";
 import { openStudy } from "./study.ts";
 import { SourceView } from "./source.ts";
+import { setupTitlebar, type Titlebar } from "./titlebar.ts";
 
 const api = window.studio;
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -33,6 +34,7 @@ interface Doc {
 
 let book: BookInfo | null = null;
 let doc: Doc | null = null;
+let titlebar: Titlebar | null = null;
 type ViewMode = "reading" | "edit" | "source";
 const stored = (key: string): string | null => {
   try {
@@ -409,6 +411,7 @@ function renderToolbar(): void {
   const bar = $("toolbar");
   clear(bar);
   const summary = currentSummary();
+  titlebar?.setTitle(book ? book.title : "Book Studio");
   bar.append(
     h("button", { class: "icon-btn", type: "button", title: `Show or hide chapters (${mod}+\\)`, "aria-label": "Show or hide chapters", onClick: () => togglePanel() }, "☰"),
     h(
@@ -1336,7 +1339,7 @@ api.onPageCounts((p) => {
 // Menu commands and window events
 // ------------------------------------------------------------------------------------------------
 
-api.onMenu((cmd: MenuCommand) => {
+function runCommand(cmd: MenuCommand): void {
   switch (cmd) {
     case "toggle-view":
       void setView(view === "reading" ? writingMode : "reading");
@@ -1432,7 +1435,8 @@ api.onMenu((cmd: MenuCommand) => {
       if (cmd.startsWith("format:")) applyFormat(cmd.slice(7) as FormatCommand);
       else if (cmd.startsWith("export:")) void exportBook(cmd.slice(7) as ExportKind);
   }
-});
+}
+api.onMenu(runCommand);
 
 api.onBookChanged((files) => void onBookChanged(files));
 api.onOpenFolder((folder) => void openFolder(folder));
@@ -1490,6 +1494,7 @@ document.addEventListener("selectionchange", () => pushReading());
 
 async function start(): Promise<void> {
   applyAppearance(await api.appearance());
+  titlebar = await setupTitlebar({ run: runCommand, openFolder: (f) => void openFolder(f) });
   renderFormatbar();
   showPanelTab();
   renderToolbar();

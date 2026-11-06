@@ -31,11 +31,53 @@ import { PACKAGE_ROOT, STYLES } from "../../core/paths.ts";
 import type { CheckReport } from "../../core/check.ts";
 import { PageCounter, type PageCounts } from "./pagecount.ts";
 import { applyPrintSwitches, renderPdf } from "../../electron/render-pdf.ts";
-import type { Appearance, BookInfo, ChapterText, ExportKind, ExportOutcome, Theme, MenuCommand, OpenResult, PrintOutcome, ReadingSnapshot, UnsavedChoice } from "../shared/api.ts";
+import type { Appearance, BookInfo, ChapterText, ChromeInfo, ExportKind, ExportOutcome, Theme, MenuCommand, OpenResult, PrintOutcome, ReadingSnapshot, UnsavedChoice } from "../shared/api.ts";
 import { startMcpServer } from "./mcp.ts";
+import { buildMenuModel, type MenuItem } from "../shared/menu.ts";
 
 const SCHEME = "bookstudio";
 const APP_ORIGIN = `${SCHEME}://app/`;
+
+// On Windows and Linux the window draws its own title bar and menu, so they can follow the reading theme and the warm
+// tint; macOS keeps its native menu at the top of the screen. These sizes are shared with the renderer (see titlebar.ts).
+const CUSTOM_CHROME = process.platform !== "darwin";
+const TITLEBAR_H = 40;
+// The width Windows reserves for the native minimise/maximise/close buttons in the Window-Controls-Overlay.
+const WINDOW_CONTROLS_W = 138;
+
+// The title bar's own colours per theme (a touch away from the page, like a real chrome bar), as RGB so the warm tint
+// can be multiplied in for the Windows native buttons. The renderer tints its own bar with the same #warm veil over it.
+const CHROME_BG: Record<Exclude<Theme, "system">, [number, number, number]> = {
+  light: [0xef, 0xed, 0xe9],
+  sepia: [0xea, 0xde, 0xbf],
+  dark: [0x2b, 0x2a, 0x28],
+  black: [0x0a, 0x0a, 0x0a],
+};
+const CHROME_INK: Record<Exclude<Theme, "system">, string> = {
+  light: "#1f1e1d",
+  sepia: "#3b2f1e",
+  dark: "#ecebe8",
+  black: "#e8e6e1",
+};
+
+function resolvedTheme(a: Appearance): Exclude<Theme, "system"> {
+  if (a.theme === "system") return nativeTheme.shouldUseDarkColors ? "dark" : "light";
+  return a.theme;
+}
+
+/** The warm tint is a multiply of rgb(255,150,40) at warmth*0.35 — the same veil the renderer lays over the window. */
+function tinted(rgb: [number, number, number], warmth: number): string {
+  const over = [255, 150, 40];
+  const a = Math.max(0, Math.min(1, warmth)) * 0.35;
+  const hex = rgb.map((c, i) => Math.round(c * (1 - a) + ((c * over[i]) / 255) * a).toString(16).padStart(2, "0")).join("");
+  return `#${hex}`;
+}
+
+/** Colours for the Windows native min/max/close buttons, following the theme and the warm tint. */
+function overlayColors(a: Appearance): { color: string; symbolColor: string } {
+  const t = resolvedTheme(a);
+  return { color: tinted(CHROME_BG[t], a.warmth), symbolColor: CHROME_INK[t] };
+}
 
 protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
 // The reading view is laid out with the same Chromium settings the PDF is printed with, so a page breaks in the same place on both.
@@ -174,6 +216,13 @@ function setAppearance(change: Partial<Appearance>): Appearance {
     fs.writeFileSync(settingsFile(), JSON.stringify(appearance, null, 2));
   } catch {
     /* the choice just is not remembered */
+  }
+  if (process.platform === "win32" && mainWindow) {
+    try {
+      mainWindow.setTitleBarOverlay(overlayColors(appearance));
+    } catch {
+      /* the window may not be ready yet; it is set again from createWindow's options */
+    }
   }
   mainWindow?.webContents.send("appearance", appearance);
   buildMenu();
@@ -687,6 +736,14 @@ function registerIpc(): void {
       at: Date.now(),
     };
   });
+  handle("chrome:info", (): ChromeInfo => ({ custom: CUSTOM_CHROME, platform: process.platform, height: TITLEBAR_H, controlsWidth: process.platform === "win32" ? WINDOW_CONTROLS_W : 0 }));
+  handle("menu:model", () => buildMenuModel({ recent: readRecent(), appearance, packaged: app.isPackaged }));
+  handle("window:minimize", () => mainWindow?.minimize());
+  handle("window:toggle-maximize", () => toggleMaximize());
+  handle("window:is-maximized", () => !!mainWindow?.isMaximized());
+  handle("devtools:toggle", () => {
+    if (!app.isPackaged) mainWindow?.webContents.toggleDevTools();
+  });
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -697,8 +754,56 @@ function send(cmd: MenuCommand): void {
   mainWindow?.webContents.send("menu", cmd);
 }
 
+function toggleMaximize(): void {
+  if (!mainWindow) return;
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  else mainWindow.maximize();
+}
+
+/** Turn the shared menu model into an Electron template (Windows/Linux). The native menu's bar is hidden but it still
+ *  provides the keyboard shortcuts; the renderer draws the matching visual menu from the very same model. */
+function toTemplate(items: MenuItem[]): MenuItemConstructorOptions[] {
+  return items.map((it): MenuItemConstructorOptions => {
+    if (it.type === "separator") return { type: "separator" };
+    if (it.type === "submenu") return { label: it.label, enabled: it.enabled, submenu: toTemplate(it.submenu) };
+    const out: MenuItemConstructorOptions = { label: it.label, accelerator: it.accelerator, enabled: it.enabled };
+    if (it.type === "radio" || it.type === "checkbox") {
+      out.type = it.type;
+      out.checked = it.checked;
+    }
+    const a = it.action;
+    switch (a.kind) {
+      case "role":
+        if (a.role === "togglemaximize") out.click = () => toggleMaximize();
+        else out.role = a.role;
+        break;
+      case "command":
+        out.click = () => send(a.cmd);
+        break;
+      case "open-folder":
+        out.click = () => mainWindow?.webContents.send("open-folder", a.folder);
+        break;
+      case "set-theme":
+        out.click = () => setAppearance({ theme: a.theme });
+        break;
+      case "set-warmth":
+        out.click = () => setAppearance({ warmth: a.warmth });
+        break;
+    }
+    return out;
+  });
+}
+
+function winLinuxTemplate(): MenuItemConstructorOptions[] {
+  return buildMenuModel({ recent: readRecent(), appearance, packaged: app.isPackaged }).map((s) => ({ label: s.label, submenu: toTemplate(s.submenu) }));
+}
+
 function buildMenu(): void {
   const mac = process.platform === "darwin";
+  if (!mac) {
+    Menu.setApplicationMenu(Menu.buildFromTemplate(winLinuxTemplate()));
+    return;
+  }
   const recent = readRecent();
   const openRecent: MenuItemConstructorOptions[] = recent.length
     ? recent.map((r) => ({ label: `${r.title} (${path.basename(r.folder)})`, click: () => mainWindow?.webContents.send("open-folder", r.folder) }))
@@ -821,8 +926,14 @@ function createWindow(): void {
     minWidth: 900,
     minHeight: 600,
     title: "Book Studio",
-    backgroundColor: "#f6f5f3",
+    backgroundColor: resolvedTheme(appearance) === "dark" ? "#242321" : resolvedTheme(appearance) === "black" ? "#000000" : resolvedTheme(appearance) === "sepia" ? "#f2e8d2" : "#f6f5f3",
     show: false,
+    // Windows: hide the system title bar and keep only the native buttons, coloured to match the theme (see overlayColors).
+    // Linux: no system frame at all; the renderer draws its own buttons. macOS: the standard frame and traffic lights.
+    ...(process.platform === "win32" ? { titleBarStyle: "hidden" as const, titleBarOverlay: { ...overlayColors(appearance), height: TITLEBAR_H } } : {}),
+    ...(process.platform === "linux" ? { frame: false } : {}),
+    // The native menu still exists (it carries the keyboard shortcuts) but its bar is hidden; the renderer draws the menu.
+    ...(CUSTOM_CHROME ? { autoHideMenuBar: true } : {}),
     webPreferences: {
       preload: fileURLToPath(new URL("../preload/preload.cjs", import.meta.url)),
       contextIsolation: true,
@@ -833,6 +944,9 @@ function createWindow(): void {
     },
   });
   mainWindow = win;
+  if (CUSTOM_CHROME) win.setMenuBarVisibility(false);
+  win.on("maximize", () => win.webContents.send("window:maximize-changed", true));
+  win.on("unmaximize", () => win.webContents.send("window:maximize-changed", false));
   win.once("ready-to-show", () => win.show());
   // Only the app's own pages may load in the window; links go to the operating system's browser.
   win.webContents.on("will-navigate", (e, url) => {
