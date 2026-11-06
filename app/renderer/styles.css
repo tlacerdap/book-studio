@@ -184,6 +184,8 @@ body.reordering .chapter { cursor: grabbing; }
 .chapter.drop-before { box-shadow: inset 0 2px 0 0 var(--accent); }
 .chapter.drop-after { box-shadow: inset 0 -2px 0 0 var(--accent); }
 .st.ver { padding-left: 4px; opacity: 0.75; font-variant-numeric: tabular-nums; }
+#panel-foot { flex: none; padding: 7px 12px; border-top: 1px solid var(--line); color: var(--ink); opacity: 0.55; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+#panel-foot[hidden] { display: none; }
 #app.panel-closed #panel { display: none; }
 .panel-book { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 8px 10px; cursor: pointer; }
 .panel-book .t { display: block; font: 400 17px/1.25 var(--font-serif); }

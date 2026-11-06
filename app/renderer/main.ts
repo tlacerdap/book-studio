@@ -1500,6 +1500,9 @@ document.addEventListener("selectionchange", () => pushReading());
 async function start(): Promise<void> {
   applyAppearance(await api.appearance());
   appVersion = await api.version();
+  const foot = $("panel-foot");
+  foot.textContent = `Book Studio v${appVersion}`;
+  foot.hidden = false;
   titlebar = await setupTitlebar({ run: runCommand, openFolder: (f) => void openFolder(f) });
   renderFormatbar();
   showPanelTab();

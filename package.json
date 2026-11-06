@@ -1,6 +1,6 @@
 {
   "name": "book-studio",
-  "version": "2.7.2",
+  "version": "2.7.3",
   "private": true,
   "description": "Read, write, annotate and print a book written in markdown. Open source, fully offline, no accounts.",
   "type": "module",
