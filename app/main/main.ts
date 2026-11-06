@@ -206,17 +206,59 @@ function readAppearance(): Appearance {
   }
 }
 
+/** Merge a few fields into settings.json, keeping everything else (so the theme write does not drop the UI zoom). */
+function writeSettings(patch: Record<string, unknown>): void {
+  let cur: Record<string, unknown> = {};
+  try {
+    cur = JSON.parse(fs.readFileSync(settingsFile(), "utf8")) as Record<string, unknown>;
+  } catch {
+    /* no settings yet */
+  }
+  try {
+    fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
+    fs.writeFileSync(settingsFile(), JSON.stringify({ ...cur, ...patch }, null, 2));
+  } catch {
+    /* not remembered */
+  }
+}
+
+// The zoom of the whole interface — the menus, the panels and the page together — set with Ctrl and the mouse wheel. This
+// is separate from the reading view's own zoom (the toolbar %), which sizes just the book page.
+const MIN_UI_ZOOM = 0.5;
+const MAX_UI_ZOOM = 2.5;
+let uiZoom = 1;
+
+function readUiZoom(): number {
+  try {
+    const raw = JSON.parse(fs.readFileSync(settingsFile(), "utf8")) as { uiZoom?: number };
+    if (typeof raw.uiZoom === "number" && raw.uiZoom >= MIN_UI_ZOOM && raw.uiZoom <= MAX_UI_ZOOM) return raw.uiZoom;
+  } catch {
+    /* default */
+  }
+  return 1;
+}
+
+/** Chromium resets the zoom on every load, so it is re-applied once the page is ready. */
+function applyUiZoom(): void {
+  try {
+    mainWindow?.webContents.setZoomFactor(uiZoom);
+  } catch {
+    /* the window is not ready yet */
+  }
+}
+
+function setUiZoom(z: number): void {
+  uiZoom = Math.min(MAX_UI_ZOOM, Math.max(MIN_UI_ZOOM, Math.round(z * 20) / 20));
+  applyUiZoom();
+  writeSettings({ uiZoom });
+}
+
 /** Change how the app looks (the theme, the warm tint) and remember it. The window is told; the menu follows. */
 function setAppearance(change: Partial<Appearance>): Appearance {
   appearance = { ...appearance, ...change };
   // Native parts (scroll bars, the spell-check menu) follow whether the theme is a dark one.
   nativeTheme.themeSource = appearance.theme === "system" ? "system" : appearance.theme === "dark" || appearance.theme === "black" ? "dark" : "light";
-  try {
-    fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
-    fs.writeFileSync(settingsFile(), JSON.stringify(appearance, null, 2));
-  } catch {
-    /* the choice just is not remembered */
-  }
+  writeSettings({ ...appearance });
   if (process.platform === "win32" && mainWindow) {
     try {
       mainWindow.setTitleBarOverlay(overlayColors(appearance));
@@ -947,6 +989,9 @@ function createWindow(): void {
   if (CUSTOM_CHROME) win.setMenuBarVisibility(false);
   win.on("maximize", () => win.webContents.send("window:maximize-changed", true));
   win.on("unmaximize", () => win.webContents.send("window:maximize-changed", false));
+  // Ctrl + mouse wheel zooms the whole interface (menus, panels and the page together), and the choice is remembered.
+  win.webContents.on("did-finish-load", applyUiZoom);
+  win.webContents.on("zoom-changed", (_e, dir) => setUiZoom(uiZoom + (dir === "in" ? 0.1 : -0.1)));
   win.once("ready-to-show", () => win.show());
   // Only the app's own pages may load in the window; links go to the operating system's browser.
   win.webContents.on("will-navigate", (e, url) => {
@@ -989,6 +1034,7 @@ app.whenReady().then(() => {
   painter = new DiagramPainter(path.join(app.getPath("userData"), "diagrams"), `${SCHEME}://assets/`);
   setDiagramProvider(painter.lookup);
   setAppearance(readAppearance());
+  uiZoom = readUiZoom();
   if (counter) counter.prepare = (text) => drawDiagrams([text]);
   registerIpc();
   // Off by default. Set BOOK_STUDIO_MCP to let a local tool (Claude Code) read along over MCP; loopback only, read-only.
