@@ -72,7 +72,7 @@ const panel = new Panel(panelEl, {
   onOutline: (line) => goToLine(line),
   onOpenBook: () => void openDialog(),
   onNewChapter: () => void newChapter(),
-  onMoveChapter: (step) => void moveChapter(step),
+  onReorderChapter: (file, toIndex) => void reorderChapter(file, toIndex),
   onRenameChapter: () => void renameChapter(),
   onDeleteChapter: () => void deleteChapter(),
   onBudget: () => void setBudget(),
@@ -1122,10 +1122,8 @@ async function renameChapter(): Promise<void> {
   await restructure(() => api.renameChapter(file, title));
 }
 
-async function moveChapter(step: -1 | 1): Promise<void> {
-  if (!doc) return;
-  const file = doc.file;
-  await restructure(() => api.moveChapter(file, step));
+async function reorderChapter(file: string, toIndex: number): Promise<void> {
+  await restructure(() => api.reorderChapter(file, toIndex));
 }
 
 async function deleteChapter(): Promise<void> {

@@ -23,6 +23,7 @@ const api: StudioApi = {
   createChapter: (title) => call("chapter:create", title),
   renameChapter: (file, title) => call("chapter:rename", file, title),
   moveChapter: (file, step) => call("chapter:move", file, step),
+  reorderChapter: (file, toIndex) => call("chapter:reorder", file, toIndex),
   deleteChapter: (file) => call("chapter:delete", file),
   historyList: (file) => call("history:list", file),
   historyDiff: (file, id, current) => call("history:diff", file, id, current),

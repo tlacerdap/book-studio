@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createChapter, linksTo, moveChapter, nextName, renameChapter, slugOf } from "../core/chapters.ts";
+import { createChapter, linksTo, moveChapter, nextName, renameChapter, reorderChapter, slugOf } from "../core/chapters.ts";
 import { chapterFiles, loadBook, type BookConfig } from "../core/config.ts";
 import { firstDifference, lineDiff, listSnapshots, readSnapshot, snapshot } from "../core/history.ts";
 
@@ -66,6 +66,16 @@ describe("chapter files", () => {
   it("does nothing at the ends", () => {
     const first = path.join(dir, "chapters", "00-intro.md");
     expect(moveChapter(book, first, -1)).toBe(first);
+  });
+
+  it("reorders a chapter to an arbitrary position (drag and drop)", () => {
+    const moved = reorderChapter(book, path.join(dir, "chapters", "00-intro.md"), 2);
+    expect(path.basename(moved)).toBe("02-intro.md");
+    const names = chapterFiles(loadBook(dir)).map((f) => path.basename(f));
+    expect(names).toEqual(["00-python.md", "01-web.md", "02-intro.md"]);
+    expect(read("02-intro.md").split("\n")[0]).toBe("# Chapter 2 - Intro");
+    expect(read("02-intro.md")).toContain("](00-python.md)");
+    expect(read("02-intro.md")).toContain("](01-web.md)");
   });
 
   it("says which chapters link to one", () => {

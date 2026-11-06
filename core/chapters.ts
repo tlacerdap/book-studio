@@ -136,6 +136,23 @@ export function moveChapter(book: BookConfig, file: string, step: -1 | 1): strin
   return targetA;
 }
 
+/** Move a chapter to an arbitrary position, trading places with each neighbour in turn (the same rule as moveChapter, so
+ *  file numbers and "# Chapter N" labels follow the order). `toIndex` is the place it should end up in the chapter list. */
+export function reorderChapter(book: BookConfig, file: string, toIndex: number): string {
+  let files = chapterFiles(book);
+  let i = files.indexOf(file);
+  if (i < 0) throw new ChapterError("That is not a chapter of this book.");
+  const target = Math.max(0, Math.min(files.length - 1, Math.floor(toIndex)));
+  let cur = file;
+  let guard = files.length + 1;
+  while (i !== target && guard-- > 0) {
+    cur = moveChapter(book, cur, target > i ? 1 : -1);
+    files = chapterFiles(book);
+    i = files.indexOf(cur);
+  }
+  return cur;
+}
+
 /** The text of every chapter that links to this one, for the warning before it is deleted. */
 export function linksTo(book: BookConfig, file: string): string[] {
   const name = path.basename(file);

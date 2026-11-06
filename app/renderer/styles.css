@@ -170,8 +170,16 @@ button { font: inherit; color: inherit; }
 /* ---- Left panel ------------------------------------------------------------------------------ */
 
 #panel { width: 268px; flex: none; background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; overflow: hidden; }
-#panel-body, #panel-results { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px 24px; }
+#panel-results { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px 24px; }
+/* The panel header (title, counts, New chapter) stays put; only the chapter list below it scrolls. */
+#panel-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.panel-head { flex: none; padding: 4px 8px 6px; border-bottom: 1px solid var(--line); }
+.panel-list { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 8px 24px; }
 #panel-body[hidden], #panel-results[hidden] { display: none; }
+/* Drag and drop to reorder chapters. */
+.chapter.dragging { opacity: 0.45; }
+.chapter.drop-before { box-shadow: inset 0 2px 0 0 var(--accent); }
+.chapter.drop-after { box-shadow: inset 0 -2px 0 0 var(--accent); }
 #app.panel-closed #panel { display: none; }
 .panel-book { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 8px 10px; cursor: pointer; }
 .panel-book .t { display: block; font: 400 17px/1.25 var(--font-serif); }

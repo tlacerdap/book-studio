@@ -22,7 +22,7 @@ import crypto from "node:crypto";
 import { IMAGE_EXTENSIONS, imageMarkdown, imageName, MAX_IMAGE_BYTES, sniffImage } from "../../core/images.ts";
 import { allCards } from "../../core/study.ts";
 import { listChapters } from "../../core/book.ts";
-import { ChapterError, createChapter, linksTo, moveChapter, renameChapter } from "../../core/chapters.ts";
+import { ChapterError, createChapter, linksTo, moveChapter, renameChapter, reorderChapter } from "../../core/chapters.ts";
 import { lineDiff, listSnapshots, readSnapshot, snapshot } from "../../core/history.ts";
 import { outline } from "../../core/notemap.ts";
 import { atomicWrite } from "../../core/fsutil.ts";
@@ -623,6 +623,15 @@ function registerIpc(): void {
     const b = requireBook();
     try {
       return { ok: true as const, file: moveChapter(b, chapterPath(String(file)), step < 0 ? -1 : 1) };
+    } catch (e) {
+      if (e instanceof ChapterError) return { ok: false as const, message: e.message };
+      throw e;
+    }
+  });
+  handle("chapter:reorder", (file: string, toIndex: number) => {
+    const b = requireBook();
+    try {
+      return { ok: true as const, file: reorderChapter(b, chapterPath(String(file)), Number(toIndex)) };
     } catch (e) {
       if (e instanceof ChapterError) return { ok: false as const, message: e.message };
       throw e;

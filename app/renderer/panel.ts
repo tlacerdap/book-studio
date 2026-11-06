@@ -9,7 +9,8 @@ export interface PanelHooks {
   onOutline(line: number): void;
   onOpenBook(): void;
   onNewChapter(): void;
-  onMoveChapter(step: -1 | 1): void;
+  /** Drag and drop: move the dragged chapter to a new position in the list. */
+  onReorderChapter(file: string, toIndex: number): void;
   onRenameChapter(): void;
   onDeleteChapter(): void;
   onBudget(): void;
@@ -24,6 +25,8 @@ export interface OutlineItem {
 
 export class Panel {
   private collapsed = new Set<string>();
+  /** The file being dragged to reorder, between dragstart and drop. */
+  private dragFile: string | null = null;
 
   constructor(
     private root: HTMLElement,
@@ -66,11 +69,16 @@ export class Panel {
   render(book: BookInfo | null, currentFile: string | null, outline: OutlineItem[], openNotes: number | null, pages: PageCounts | null = null): void {
     clear(this.root);
     if (!book) return;
-    this.root.append(
+    // The title, the counts and "New chapter" stay fixed at the top; only the chapter list below them scrolls.
+    const head = h(
+      "div",
+      { class: "panel-head" },
       h("button", { class: "panel-book", type: "button", title: "Open another book", onClick: () => this.hooks.onOpenBook() }, h("span", { class: "t" }, book.title), book.author ? h("span", { class: "a" }, book.author) : null),
       ...[this.length(book, pages)].filter((x): x is HTMLElement => !!x),
       h("button", { class: "new-chapter", type: "button", title: "Add a chapter to the book (Cmd+N)", onClick: () => this.hooks.onNewChapter() }, "+ New chapter"),
     );
+    const list = h("div", { class: "panel-list" });
+    this.root.append(head, list);
     // Consecutive chapters of one Part are grouped under its name; chapters outside every Part stand alone.
     const groups: { key: string; head: string; chapters: ChapterSummary[] }[] = [];
     for (const c of book.chapters) {
@@ -104,24 +112,21 @@ export class Panel {
       for (const c of g.chapters) {
         const current = c.path === currentFile;
         const count = current && openNotes !== null ? openNotes : c.openNotes;
-        body.append(
-          h(
-            "button",
-            { class: `chapter${current ? " current" : ""}${book.known.includes(c.file) ? " known" : ""}`, type: "button", "data-file": c.file, title: c.file, onClick: () => this.hooks.onOpenChapter(c.path) },
-            h("span", { class: "num" }, c.label ? c.label.replace(/^Chapter /, "") : ""),
-            h("span", { class: "name" }, c.title),
-            book.known.includes(c.file) ? h("span", { class: "known-tag", title: "Marked as known: left out of the PDF" }, "known") : pages?.counts[c.path] ? h("span", { class: "pp", title: `${pages.counts[c.path]} pages` }, String(pages.counts[c.path])) : null,
-            count > 0 ? h("span", { class: "badge", title: `${count} open note${count === 1 ? "" : "s"}` }, String(count)) : null,
-          ),
+        const row = h(
+          "button",
+          { class: `chapter${current ? " current" : ""}${book.known.includes(c.file) ? " known" : ""}`, type: "button", "data-file": c.file, title: "Drag to reorder", onClick: () => this.hooks.onOpenChapter(c.path) },
+          h("span", { class: "num" }, c.label ? c.label.replace(/^Chapter /, "") : ""),
+          h("span", { class: "name" }, c.title),
+          book.known.includes(c.file) ? h("span", { class: "known-tag", title: "Marked as known: left out of the PDF" }, "known") : pages?.counts[c.path] ? h("span", { class: "pp", title: `${pages.counts[c.path]} pages` }, String(pages.counts[c.path])) : null,
+          count > 0 ? h("span", { class: "badge", title: `${count} open note${count === 1 ? "" : "s"}` }, String(count)) : null,
         );
+        this.makeDraggable(row, book, c);
+        body.append(row);
         if (current) {
-          const index = book.chapters.indexOf(c);
           body.append(
             h(
               "div",
               { class: "chapter-actions" },
-              h("button", { type: "button", title: "Move this chapter up", "aria-label": "Move chapter up", disabled: index === 0, onClick: () => this.hooks.onMoveChapter(-1) }, "\u2191"),
-              h("button", { type: "button", title: "Move this chapter down", "aria-label": "Move chapter down", disabled: index === book.chapters.length - 1, onClick: () => this.hooks.onMoveChapter(1) }, "\u2193"),
               h("button", { type: "button", title: book.known.includes(c.file) ? "Put this chapter back in the PDF" : "You know this chapter: keep the file, leave it out of the PDF", onClick: () => this.hooks.onToggleKnown() }, book.known.includes(c.file) ? "Unmark known" : "Mark as known"),
               h("button", { type: "button", onClick: () => this.hooks.onRenameChapter() }, "Rename"),
               h("button", { type: "button", class: "danger", onClick: () => this.hooks.onDeleteChapter() }, "Delete"),
@@ -139,7 +144,52 @@ export class Panel {
         }
       }
       part.append(body);
-      this.root.append(part);
+      list.append(part);
     }
+  }
+
+  /** Clear the drop-position hints from every chapter row. */
+  private clearDropHints(): void {
+    for (const el of this.root.querySelectorAll(".chapter.drop-before, .chapter.drop-after")) el.classList.remove("drop-before", "drop-after");
+  }
+
+  /** Wire a chapter row for drag-and-drop reordering. */
+  private makeDraggable(row: HTMLElement, book: BookInfo, c: ChapterSummary): void {
+    row.draggable = true;
+    row.addEventListener("dragstart", (e) => {
+      this.dragFile = c.file;
+      row.classList.add("dragging");
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", c.file);
+      }
+    });
+    row.addEventListener("dragend", () => {
+      this.dragFile = null;
+      row.classList.remove("dragging");
+      this.clearDropHints();
+    });
+    row.addEventListener("dragover", (e) => {
+      if (!this.dragFile || this.dragFile === c.file) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+      const r = row.getBoundingClientRect();
+      const before = e.clientY - r.top < r.height / 2;
+      this.clearDropHints();
+      row.classList.add(before ? "drop-before" : "drop-after");
+    });
+    row.addEventListener("drop", (e) => {
+      if (!this.dragFile || this.dragFile === c.file) return;
+      e.preventDefault();
+      const r = row.getBoundingClientRect();
+      const before = e.clientY - r.top < r.height / 2;
+      const from = book.chapters.findIndex((x) => x.file === this.dragFile);
+      const onto = book.chapters.indexOf(c);
+      let target = before ? onto : onto + 1;
+      if (from >= 0 && from < target) target -= 1;
+      this.clearDropHints();
+      if (from >= 0 && target !== from) this.hooks.onReorderChapter(this.dragFile, target);
+      this.dragFile = null;
+    });
   }
 }

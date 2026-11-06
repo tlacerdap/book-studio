@@ -184,6 +184,8 @@ export interface StudioApi {
   createChapter(title: string): Promise<FileResult>;
   renameChapter(file: string, title: string): Promise<FileResult>;
   moveChapter(file: string, step: -1 | 1): Promise<FileResult>;
+  /** Move a chapter to a new position in the list (drag and drop in the panel). */
+  reorderChapter(file: string, toIndex: number): Promise<FileResult>;
   /** Asks first; true if the chapter went to the Trash. */
   deleteChapter(file: string): Promise<boolean>;
   historyList(file: string): Promise<SnapshotInfo[]>;
