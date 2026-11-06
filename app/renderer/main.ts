@@ -1416,6 +1416,11 @@ function runCommand(cmd: MenuCommand): void {
     case "reload-book":
       void refreshBook().then(() => doc && onBookChanged([doc.name]));
       break;
+    case "toggle-mcp":
+      void api.toggleMcp().then((on) =>
+        toast(on ? "Claude can read along: connect it to http://127.0.0.1:4319/ (see the README)." : "Claude can no longer read this book."),
+      );
+      break;
     case "open-book":
       void openDialog();
       break;

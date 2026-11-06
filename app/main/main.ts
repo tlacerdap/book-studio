@@ -253,6 +253,41 @@ function setUiZoom(z: number): void {
   writeSettings({ uiZoom });
 }
 
+// "Let Claude read along": the optional, read-only MCP server (see mcp.ts). It is now a remembered setting with a menu
+// toggle, so a normal launch can keep it on; the BOOK_STUDIO_MCP env var only sets what the very first run defaults to.
+let mcpEnabled = false;
+let mcpStop: (() => void) | null = null;
+
+const mcpPort = (): number => Number(process.env.BOOK_STUDIO_MCP_PORT) || 4319;
+
+function readMcpEnabled(): boolean {
+  try {
+    const raw = JSON.parse(fs.readFileSync(settingsFile(), "utf8")) as { mcpEnabled?: boolean };
+    if (typeof raw.mcpEnabled === "boolean") return raw.mcpEnabled;
+  } catch {
+    /* no setting yet */
+  }
+  return !!process.env.BOOK_STUDIO_MCP;
+}
+
+function startMcp(): void {
+  if (mcpStop) return;
+  mcpStop = startMcpServer({ version: app.getVersion(), book: () => book, reading: () => readingState }, mcpPort());
+}
+
+function stopMcp(): void {
+  mcpStop?.();
+  mcpStop = null;
+}
+
+function setMcpEnabled(on: boolean): void {
+  mcpEnabled = on;
+  writeSettings({ mcpEnabled: on });
+  if (on) startMcp();
+  else stopMcp();
+  buildMenu();
+}
+
 /** Change how the app looks (the theme, the warm tint) and remember it. The window is told; the menu follows. */
 function setAppearance(change: Partial<Appearance>): Appearance {
   appearance = { ...appearance, ...change };
@@ -779,12 +814,16 @@ function registerIpc(): void {
     };
   });
   handle("chrome:info", (): ChromeInfo => ({ custom: CUSTOM_CHROME, platform: process.platform, height: TITLEBAR_H, controlsWidth: process.platform === "win32" ? WINDOW_CONTROLS_W : 0 }));
-  handle("menu:model", () => buildMenuModel({ recent: readRecent(), appearance, packaged: app.isPackaged }));
+  handle("menu:model", () => buildMenuModel({ recent: readRecent(), appearance, packaged: app.isPackaged, mcpEnabled }));
   handle("window:minimize", () => mainWindow?.minimize());
   handle("window:toggle-maximize", () => toggleMaximize());
   handle("window:is-maximized", () => !!mainWindow?.isMaximized());
   handle("devtools:toggle", () => {
     if (!app.isPackaged) mainWindow?.webContents.toggleDevTools();
+  });
+  handle("mcp:toggle", () => {
+    setMcpEnabled(!mcpEnabled);
+    return mcpEnabled;
   });
 }
 
@@ -837,7 +876,7 @@ function toTemplate(items: MenuItem[]): MenuItemConstructorOptions[] {
 }
 
 function winLinuxTemplate(): MenuItemConstructorOptions[] {
-  return buildMenuModel({ recent: readRecent(), appearance, packaged: app.isPackaged }).map((s) => ({ label: s.label, submenu: toTemplate(s.submenu) }));
+  return buildMenuModel({ recent: readRecent(), appearance, packaged: app.isPackaged, mcpEnabled }).map((s) => ({ label: s.label, submenu: toTemplate(s.submenu) }));
 }
 
 function buildMenu(): void {
@@ -952,6 +991,7 @@ function buildMenu(): void {
         { label: "Actual Size", accelerator: "CmdOrCtrl+0", click: () => send("zoom-reset") },
         { label: "Fit Page to Window", accelerator: "CmdOrCtrl+9", click: () => send("zoom-fit") },
         { type: "separator" },
+        { label: "Let Claude Read Along", type: "checkbox", checked: mcpEnabled, click: () => setMcpEnabled(!mcpEnabled) },
         { label: "Reload Book", click: () => send("reload-book") },
         ...(app.isPackaged ? [] : [{ type: "separator" } as MenuItemConstructorOptions, { role: "toggleDevTools" } as MenuItemConstructorOptions]),
       ],
@@ -1037,11 +1077,8 @@ app.whenReady().then(() => {
   uiZoom = readUiZoom();
   if (counter) counter.prepare = (text) => drawDiagrams([text]);
   registerIpc();
-  // Off by default. Set BOOK_STUDIO_MCP to let a local tool (Claude Code) read along over MCP; loopback only, read-only.
-  if (process.env.BOOK_STUDIO_MCP) {
-    const port = Number(process.env.BOOK_STUDIO_MCP_PORT) || 4319;
-    startMcpServer({ version: app.getVersion(), book: () => book, reading: () => readingState }, port);
-  }
+  mcpEnabled = readMcpEnabled();
+  if (mcpEnabled) startMcp();
   buildMenu();
   createWindow();
   app.on("activate", () => {

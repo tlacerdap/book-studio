@@ -71,6 +71,7 @@ const api: StudioApi = {
   isWindowMaximized: () => call("window:is-maximized"),
   onMaximizeChange: (cb) => subscribe<[boolean]>("window:maximize-changed", cb),
   toggleDevTools: () => call("devtools:toggle"),
+  toggleMcp: () => call("mcp:toggle"),
 };
 
 contextBridge.exposeInMainWorld("studio", api);

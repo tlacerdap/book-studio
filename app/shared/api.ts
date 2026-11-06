@@ -163,6 +163,7 @@ export type MenuCommand =
   | "next-chapter"
   | "print"
   | "reload-book"
+  | "toggle-mcp"
   | "open-book"
   | "zoom-in"
   | "zoom-out"
@@ -251,4 +252,6 @@ export interface StudioApi {
   onMaximizeChange(cb: (maximized: boolean) => void): () => void;
   /** Open or close the developer tools (unpackaged builds only). */
   toggleDevTools(): Promise<void>;
+  /** Turn the "let Claude read along" MCP server on or off; returns the new state. */
+  toggleMcp(): Promise<boolean>;
 }

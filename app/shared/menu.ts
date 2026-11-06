@@ -25,6 +25,8 @@ export interface MenuContext {
   recent: { folder: string; title: string }[];
   appearance: Appearance;
   packaged: boolean;
+  /** Whether the optional "let Claude read along" MCP server is on. */
+  mcpEnabled: boolean;
 }
 
 const THEME_LABELS: Record<Theme, string> = { light: "Light", sepia: "Sepia (warm paper)", dark: "Dark", black: "Black", system: "Match the System" };
@@ -148,6 +150,7 @@ export function buildMenuModel(ctx: MenuContext): MenuSection[] {
         command("Actual Size", "zoom-reset", "CmdOrCtrl+0"),
         command("Fit Page to Window", "zoom-fit", "CmdOrCtrl+9"),
         SEP,
+        { type: "checkbox", label: "Let Claude Read Along", checked: ctx.mcpEnabled, action: { kind: "command", cmd: "toggle-mcp" } },
         command("Reload Book", "reload-book"),
         ...(ctx.packaged ? [] : [{ label: "Toggle Developer Tools", accelerator: "CmdOrCtrl+Shift+I", action: { kind: "role" as const, role: "toggleDevTools" as const } }]),
       ],

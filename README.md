@@ -166,18 +166,22 @@ know *what you are looking at right now* — the open chapter, the heading you a
 expose that over [MCP](https://modelcontextprotocol.io). It is **off unless you ask for it**, serves **only your own machine**
 (`127.0.0.1`), and is **read-only**: it answers questions about the open book and never writes.
 
-Start the app with the `BOOK_STUDIO_MCP` flag set, then point Claude Code at it once:
+Turn it on in the app: **View → Let Claude Read Along** (it is remembered, so a normal launch keeps it on). Then point your
+assistant at it once:
 
 ```bash
-# Start Book Studio with the reader server on (any value turns it on; the port defaults to 4319).
-#   macOS / Linux:
-BOOK_STUDIO_MCP=1 open -a "Book Studio"      # or: BOOK_STUDIO_MCP=1 ./Book\ Studio
-#   Windows (PowerShell):
-$env:BOOK_STUDIO_MCP=1; & "$env:LOCALAPPDATA\Programs\book-studio\Book Studio.exe"
-
-# Then register it with Claude Code (once):
+# Register it with Claude Code (once):
 claude mcp add --transport http book-studio http://127.0.0.1:4319/
 ```
+
+For Claude Desktop, add a small stdio-to-HTTP bridge to `claude_desktop_config.json` and restart it:
+
+```json
+{ "mcpServers": { "book-studio": { "command": "npx", "args": ["-y", "mcp-remote", "http://127.0.0.1:4319/", "--transport", "http-only"] } } }
+```
+
+(You can also start the app with the `BOOK_STUDIO_MCP=1` environment variable set to have the server default to on the very
+first run, or `BOOK_STUDIO_MCP_PORT` to use a port other than 4319.)
 
 It offers five read-only tools: `reading_now` (the chapter, view, heading and selection you are on), `current_book` (title,
 author and the chapter list), `chapter_text` (one chapter's markdown, with or without your notes), `book_notes` (every question
