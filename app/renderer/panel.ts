@@ -25,8 +25,8 @@ export interface OutlineItem {
 
 export class Panel {
   private collapsed = new Set<string>();
-  /** The file being dragged to reorder, between dragstart and drop. */
-  private dragFile: string | null = null;
+  /** Set on the mouseup that ends a reorder drag, so the click it would otherwise fire does not open the chapter. */
+  private suppressClick = false;
 
   constructor(
     private root: HTMLElement,
@@ -112,15 +112,35 @@ export class Panel {
       for (const c of g.chapters) {
         const current = c.path === currentFile;
         const count = current && openNotes !== null ? openNotes : c.openNotes;
+        // A div, not a button: Chromium does not reliably start a native drag from a form control, and these rows drag.
         const row = h(
-          "button",
-          { class: `chapter${current ? " current" : ""}${book.known.includes(c.file) ? " known" : ""}`, type: "button", "data-file": c.file, title: "Drag to reorder", onClick: () => this.hooks.onOpenChapter(c.path) },
+          "div",
+          {
+            class: `chapter${current ? " current" : ""}${book.known.includes(c.file) ? " known" : ""}`,
+            role: "button",
+            tabindex: "0",
+            "data-file": c.file,
+            title: "Drag to reorder",
+            onClick: () => {
+              if (this.suppressClick) {
+                this.suppressClick = false;
+                return;
+              }
+              this.hooks.onOpenChapter(c.path);
+            },
+            onKeydown: (e: KeyboardEvent) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                this.hooks.onOpenChapter(c.path);
+              }
+            },
+          },
           h("span", { class: "num" }, c.label ? c.label.replace(/^Chapter /, "") : ""),
           h("span", { class: "name" }, c.title),
           book.known.includes(c.file) ? h("span", { class: "known-tag", title: "Marked as known: left out of the PDF" }, "known") : pages?.counts[c.path] ? h("span", { class: "pp", title: `${pages.counts[c.path]} pages` }, String(pages.counts[c.path])) : null,
           count > 0 ? h("span", { class: "badge", title: `${count} open note${count === 1 ? "" : "s"}` }, String(count)) : null,
         );
-        this.makeDraggable(row, book, c);
+        this.makeReorderable(row, book, c);
         body.append(row);
         if (current) {
           body.append(
@@ -153,43 +173,61 @@ export class Panel {
     for (const el of this.root.querySelectorAll(".chapter.drop-before, .chapter.drop-after")) el.classList.remove("drop-before", "drop-after");
   }
 
-  /** Wire a chapter row for drag-and-drop reordering. */
-  private makeDraggable(row: HTMLElement, book: BookInfo, c: ChapterSummary): void {
-    row.draggable = true;
-    row.addEventListener("dragstart", (e) => {
-      this.dragFile = c.file;
-      row.classList.add("dragging");
-      if (e.dataTransfer) {
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", c.file);
-      }
-    });
-    row.addEventListener("dragend", () => {
-      this.dragFile = null;
-      row.classList.remove("dragging");
-      this.clearDropHints();
-    });
-    row.addEventListener("dragover", (e) => {
-      if (!this.dragFile || this.dragFile === c.file) return;
-      e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-      const r = row.getBoundingClientRect();
-      const before = e.clientY - r.top < r.height / 2;
-      this.clearDropHints();
-      row.classList.add(before ? "drop-before" : "drop-after");
-    });
-    row.addEventListener("drop", (e) => {
-      if (!this.dragFile || this.dragFile === c.file) return;
-      e.preventDefault();
-      const r = row.getBoundingClientRect();
-      const before = e.clientY - r.top < r.height / 2;
-      const from = book.chapters.findIndex((x) => x.file === this.dragFile);
-      const onto = book.chapters.indexOf(c);
-      let target = before ? onto : onto + 1;
-      if (from >= 0 && from < target) target -= 1;
-      this.clearDropHints();
-      if (from >= 0 && target !== from) this.hooks.onReorderChapter(this.dragFile, target);
-      this.dragFile = null;
+  /**
+   * Make a chapter row reorderable by dragging it. This uses plain mouse events rather than the HTML5 drag-and-drop API,
+   * because that API is unreliable to start from these rows; here a press-and-move always begins a drag, and a press
+   * without moving is still an ordinary click that opens the chapter.
+   */
+  private makeReorderable(row: HTMLElement, book: BookInfo, c: ChapterSummary): void {
+    row.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      const startY = e.clientY;
+      let dragging = false;
+      let drop: { before: boolean; onto: ChapterSummary } | null = null;
+      const chapterRows = () => Array.from(this.root.querySelectorAll<HTMLElement>(".chapter"));
+
+      const onMove = (ev: MouseEvent) => {
+        if (!dragging && Math.abs(ev.clientY - startY) < 5) return;
+        if (!dragging) {
+          dragging = true;
+          row.classList.add("dragging");
+          document.body.classList.add("reordering");
+        }
+        ev.preventDefault();
+        this.clearDropHints();
+        drop = null;
+        for (const el of chapterRows()) {
+          const r = el.getBoundingClientRect();
+          if (ev.clientY < r.top || ev.clientY > r.bottom) continue;
+          const file = el.getAttribute("data-file");
+          const onto = file ? book.chapters.find((x) => x.file === file) : undefined;
+          if (!onto || onto.file === c.file) break;
+          const before = ev.clientY - r.top < r.height / 2;
+          el.classList.add(before ? "drop-before" : "drop-after");
+          drop = { before, onto };
+          break;
+        }
+      };
+
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove, true);
+        document.removeEventListener("mouseup", onUp, true);
+        document.body.classList.remove("reordering");
+        row.classList.remove("dragging");
+        this.clearDropHints();
+        if (!dragging) return; // a plain click: the row's onClick opens the chapter
+        this.suppressClick = true;
+        if (drop) {
+          const from = book.chapters.findIndex((x) => x.file === c.file);
+          const onto = book.chapters.indexOf(drop.onto);
+          let toIndex = drop.before ? onto : onto + 1;
+          if (from >= 0 && from < toIndex) toIndex -= 1;
+          if (from >= 0 && toIndex !== from) this.hooks.onReorderChapter(c.path, toIndex);
+        }
+      };
+
+      document.addEventListener("mousemove", onMove, true);
+      document.addEventListener("mouseup", onUp, true);
     });
   }
 }

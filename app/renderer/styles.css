@@ -176,8 +176,11 @@ button { font: inherit; color: inherit; }
 .panel-head { flex: none; padding: 4px 8px 6px; border-bottom: 1px solid var(--line); }
 .panel-list { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 8px 24px; }
 #panel-body[hidden], #panel-results[hidden] { display: none; }
-/* Drag and drop to reorder chapters. */
-.chapter.dragging { opacity: 0.45; }
+/* Drag to reorder chapters (press and move). */
+body.reordering { cursor: grabbing; user-select: none; }
+body.reordering .chapter { cursor: grabbing; }
+.chapter:focus-visible { outline: 2px solid rgba(60, 120, 255, 0.45); outline-offset: -2px; }
+.chapter.dragging { opacity: 0.5; }
 .chapter.drop-before { box-shadow: inset 0 2px 0 0 var(--accent); }
 .chapter.drop-after { box-shadow: inset 0 -2px 0 0 var(--accent); }
 #app.panel-closed #panel { display: none; }
