@@ -94,6 +94,7 @@ const reading = new ReadingView(viewEls.reading, api, {
   onError: (m) => toast(`Could not lay out this chapter: ${m}`),
   onToast: (m) => toast(m),
   onZoom: () => renderToolbar(),
+  onWheelZoom: (deltaY) => regionWheelStep("book", deltaY),
   onPages: (n) => {
     if (doc && pageCounts) pageCounts.counts[doc.file] = n;
     if (doc) void api.pagesKnown(doc.file, n);
@@ -469,6 +470,91 @@ function zoomTo(step: number, reset = false): void {
 }
 
 let sourceScale = 1;
+
+// ---- region zoom (Ctrl/Cmd + mouse wheel zooms only the region the pointer is over) -----------------------------------
+//
+// The book itself (the reading page, the Edit page, the Source markdown) uses its own view zoom, the one the toolbar %
+// shows (zoomTo). The left panel, the menu bar and the print report each carry an independent CSS zoom, remembered per
+// computer. So the whole interface no longer zooms as one: the pointer decides what grows.
+type ZoomRegion = "book" | "panel" | "menus" | "report";
+const REGION_SELECTOR: Record<Exclude<ZoomRegion, "book">, string> = { panel: "#panel", menus: "#titlebar", report: "#report" };
+const REGION_ZOOM_MIN = 0.5;
+const REGION_ZOOM_MAX = 2.5;
+const REGION_ZOOM_STEP = 0.1;
+
+const regionZoom: Record<string, number> = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("region-zoom:v1") ?? "{}") as Record<string, number>) || {};
+  } catch {
+    return {};
+  }
+})();
+
+/** Put a region's saved CSS zoom back on its element (the book region has no element: it uses the view's own zoom). */
+function applyRegionZoom(region: Exclude<ZoomRegion, "book">): void {
+  const el = document.querySelector<HTMLElement>(REGION_SELECTOR[region]);
+  if (el) el.style.zoom = String(regionZoom[region] ?? 1);
+}
+
+/** Re-apply every saved region zoom (on start, once the shell is in the DOM). */
+function applyAllRegionZoom(): void {
+  (Object.keys(REGION_SELECTOR) as Exclude<ZoomRegion, "book">[]).forEach(applyRegionZoom);
+}
+
+function bumpRegionZoom(region: Exclude<ZoomRegion, "book">, dir: number): void {
+  const next = Math.max(REGION_ZOOM_MIN, Math.min(REGION_ZOOM_MAX, Math.round(((regionZoom[region] ?? 1) + dir * REGION_ZOOM_STEP) * 100) / 100));
+  regionZoom[region] = next;
+  try {
+    localStorage.setItem("region-zoom:v1", JSON.stringify(regionZoom));
+  } catch {
+    /* losing the remembered zoom is not worth an error */
+  }
+  applyRegionZoom(region);
+}
+
+// One zoom step per wheel notch, not per pixel; the accumulator resets when the pointer crosses into another region so a
+// fast scroll over the panel cannot carry over into the book.
+let wheelAcc = 0;
+let wheelRegion: ZoomRegion | null = null;
+function regionWheelStep(region: ZoomRegion, deltaY: number): void {
+  if (region !== wheelRegion) {
+    wheelAcc = 0;
+    wheelRegion = region;
+  }
+  wheelAcc += deltaY;
+  if (Math.abs(wheelAcc) < 40) return;
+  const dir = wheelAcc < 0 ? 1 : -1; // wheel up (negative deltaY) zooms in
+  wheelAcc = 0;
+  if (region === "book") zoomTo(dir * 0.1);
+  else bumpRegionZoom(region, dir);
+}
+
+/** Which region the pointer is over: the menu bar, the left panel, the report, or (the rest of the window) the book. */
+function regionAt(target: HTMLElement | null): ZoomRegion | null {
+  if (!target) return null;
+  if (target.closest("#panel")) return "panel";
+  if (target.closest("#report")) return "report";
+  if (target.closest("#titlebar")) return "menus";
+  if (target.closest("#center")) return "book";
+  return null;
+}
+
+/**
+ * Ctrl/Cmd + wheel zooms the region under the pointer. preventDefault stops Chromium's own whole-window zoom, so this
+ * replaces it. The reading page is in a frame, which forwards its own Ctrl + wheel through the onWheelZoom hook below.
+ */
+function wireRegionZoom(): void {
+  window.addEventListener(
+    "wheel",
+    (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      e.preventDefault();
+      const region = regionAt(e.target as HTMLElement);
+      if (region) regionWheelStep(region, e.deltaY);
+    },
+    { passive: false },
+  );
+}
 
 /** A small explanation of notes, with the command for the open chapter ready to copy. */
 function toggleHelp(): void {
@@ -1504,6 +1590,8 @@ async function start(): Promise<void> {
   foot.textContent = `Book Studio v${appVersion}`;
   foot.hidden = false;
   titlebar = await setupTitlebar({ run: runCommand, openFolder: (f) => void openFolder(f) });
+  wireRegionZoom();
+  applyAllRegionZoom();
   renderFormatbar();
   showPanelTab();
   renderToolbar();

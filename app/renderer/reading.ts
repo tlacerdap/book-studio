@@ -17,6 +17,8 @@ export interface ReadingHooks {
   onError(message: string): void;
   onToast(message: string): void;
   onZoom(zoom: number, fit: boolean): void;
+  /** The reader did Ctrl/Cmd + wheel over the page in the frame: the raw wheel delta, for region zoom. */
+  onWheelZoom(deltaY: number): void;
   /** How many pages the chapter has, now that it is laid out. */
   onPages(pages: number): void;
   /** Put text on the clipboard. */
@@ -341,6 +343,9 @@ export class ReadingView {
         if (k) box.choose(k);
         break;
       }
+      case "wheel-zoom":
+        this.hooks.onWheelZoom(Number(m.deltaY));
+        break;
       case "goto-chapter":
         this.hooks.onGotoChapter(String(m.id));
         break;

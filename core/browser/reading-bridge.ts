@@ -411,6 +411,18 @@ document.addEventListener("click", (e) => {
   if (/^https?:\/\//i.test(href)) send({ type: "open-external", url: href });
 });
 
+// Ctrl/Cmd + wheel over the page zooms only the book. The wheel event fires inside this frame, so the app's own
+// window-level handler never sees it: forward the delta to the app, and stop Chromium's own zoom of the frame.
+window.addEventListener(
+  "wheel",
+  (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    e.preventDefault();
+    send({ type: "wheel-zoom", deltaY: e.deltaY });
+  },
+  { passive: false },
+);
+
 window.addEventListener("resize", () => report());
 
 async function waitForPages(): Promise<void> {

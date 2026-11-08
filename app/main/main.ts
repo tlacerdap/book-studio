@@ -248,12 +248,6 @@ function applyUiZoom(): void {
   }
 }
 
-function setUiZoom(z: number): void {
-  uiZoom = Math.min(MAX_UI_ZOOM, Math.max(MIN_UI_ZOOM, Math.round(z * 20) / 20));
-  applyUiZoom();
-  writeSettings({ uiZoom });
-}
-
 // "Let Claude read along": the optional, read-only MCP server (see mcp.ts). It is now a remembered setting with a menu
 // toggle, so a normal launch can keep it on; the BOOK_STUDIO_MCP env var only sets what the very first run defaults to.
 let mcpEnabled = false;
@@ -1052,9 +1046,9 @@ function createWindow(): void {
   if (CUSTOM_CHROME) win.setMenuBarVisibility(false);
   win.on("maximize", () => win.webContents.send("window:maximize-changed", true));
   win.on("unmaximize", () => win.webContents.send("window:maximize-changed", false));
-  // Ctrl + mouse wheel zooms the whole interface (menus, panels and the page together), and the choice is remembered.
+  // Ctrl + mouse wheel is handled in the renderer now: it zooms only the region under the pointer (the book, the left
+  // panel, the menu bar or the report), each independently. The whole-interface zoom factor stays at its saved value.
   win.webContents.on("did-finish-load", applyUiZoom);
-  win.webContents.on("zoom-changed", (_e, dir) => setUiZoom(uiZoom + (dir === "in" ? 0.1 : -0.1)));
   win.once("ready-to-show", () => win.show());
   // Only the app's own pages may load in the window; links go to the operating system's browser.
   win.webContents.on("will-navigate", (e, url) => {
